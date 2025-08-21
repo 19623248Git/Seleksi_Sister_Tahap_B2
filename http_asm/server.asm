@@ -77,7 +77,7 @@ section .text
         extern integer_to_ascii
         extern build_temp_filename
         extern find_boundary_value
-        extern find_filename_value ; <-- Added extern for new function
+        extern find_filename_value
 
         global _start
         
@@ -142,22 +142,6 @@ _start:
         mov rdx, req_buff_len
         syscall
         mov r12, rax
-
-        ; -- DEBUG: Print the initial received headers --
-        push rax
-        push rdi
-        push rsi
-        push rdx
-        mov rax, 1 ; write
-        mov rdi, 1 ; stdout
-        lea rsi, [request_buffer]
-        mov rdx, r12 ; bytes read
-        syscall
-        pop rdx
-        pop rsi
-        pop rdi
-        pop rax
-        ; -- END DEBUG --
 
         lea rdi, [request_buffer]
         mov rsi, r12
@@ -232,15 +216,44 @@ _start:
         syscall
         mov r15, rax
 
+        ; -- REVISED LOGIC for 100-continue --
+        ; Find end of main headers in the initial packet
+        lea rdi, [request_buffer]
+        mov rsi, r12
+        lea rdx, [crlf_separator]
+        mov rcx, crlf_separator_len
+        call memmem
+        cmp rax, 0
+        je .handle_bad_request
+        
+        add rax, crlf_separator_len
+        mov r9, rax ; r9 = pointer to start of potential body
+        
+        lea rdi, [request_buffer]
+        sub rax, rdi ; rax = size of headers
+        mov r10, r12
+        sub r10, rax ; r10 = size of body in initial buffer
+        
+        cmp r10, 0
+        jne .process_first_body_chunk ; If body exists, process it
+
+        ; If we are here, it was a 100-continue request with no body.
+        ; Read the first chunk of the body now.
         mov rax, 0
         mov rdi, [client_fd]
         lea rsi, [request_buffer]
         mov rdx, req_buff_len
         syscall
-        mov r12, rax
+        mov r12, rax ; r12 now holds the size of this new chunk
+        lea r9, [request_buffer] ; The "body" is the whole new chunk
+        mov r10, r12 ; The "body size" is the whole new chunk size
 
-        lea rdi, [request_buffer]
-        mov rsi, r12
+.process_first_body_chunk:
+        ; At this point, r9 points to the data to process, and r10 is its size.
+        
+        ; 1. Find filename within this first body chunk
+        mov rdi, r9
+        mov rsi, r10
         call find_filename_value
         cmp rax, 0
         je .handle_bad_request
@@ -251,24 +264,31 @@ _start:
         rep movsb
         mov byte [rdi], 0
 
-        lea rdi, [request_buffer]
-        mov rsi, r12
+        ; 2. Find the end of the part headers within this chunk
+        mov rdi, r9
+        mov rsi, r10
         lea rdx, [crlf_separator]
         mov rcx, crlf_separator_len
         call memmem
         cmp rax, 0
         je .handle_bad_request
 
+        ; 3. Calculate and write the first piece of file data
         add rax, crlf_separator_len
-        mov rsi, rax
-        lea rdi, [request_buffer]
-        sub rax, rdi
-        mov rdx, r12
-        sub rdx, rax
+        mov rsi, rax ; rsi = pointer to file data
+        
+        lea rdi, [r9]
+        sub rax, rdi ; rax = size of part headers
+        mov rdx, r10
+        sub rdx, rax ; rdx = size of file data
+
         mov rdi, r15
         mov rax, 1
         syscall
-        mov r14, r12
+
+        ; 4. Initialize the total bytes counter and jump to the loop
+        mov r14, r10
+        jmp .upload_loop
 
  .upload_loop:
         cmp r14, r13

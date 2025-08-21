@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome Home</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+
+    <!-- Main container to center content -->
+    <div class="min-h-screen flex flex-col items-center justify-center p-6">
+
+        <!-- Content Box -->
+        <div class="bg-gray-800 p-10 rounded-xl shadow-2xl max-w-2xl text-center">
+            
+            <!-- Main Heading -->
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-4">
+                Welcome to the Assembly Web Server!
+            </h1>
+            
+            <!-- Subheading -->
+            <p class="text-lg text-gray-400 mb-8">
+                This page is being served by a homemade HTTP server written entirely in x86-64 Assembly.
+            </p>
+
+            <!-- Status Indicator -->
+            <div class="flex items-center justify-center space-x-3 bg-gray-700/50 rounded-full px-4 py-2">
+                <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <span class="text-green-400 font-semibold">Server Status: Online</span>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-12 text-gray-500 text-sm">
+            <p>Bandung, West Java &copy; 2025</p>
+        </footer>
+
+    </div>
+
+</body>
+</html>

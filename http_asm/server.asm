@@ -51,6 +51,8 @@ section .data
         continue_response_len equ $ - continue_response
         http_201_response db 'HTTP/1.1 201 Created', 0x0d, 0x0a, 'Content-Length: 0', 0x0d, 0x0a, 0x0d, 0x0a
         http_201_len equ $ - http_201_response
+        http_204_response db 'HTTP/1.1 204 No Content', 0x0d, 0x0a, 0x0d, 0x0a
+        http_204_len equ $ - http_204_response
         http_400_response:
                 db 'HTTP/1.1 400 Bad Request', 0x0d, 0x0a
                 db 'Content-Type: text/html', 0x0d, 0x0a
@@ -59,6 +61,11 @@ section .data
                 db 0x0d, 0x0a  ; Blank line
                 db '<html><body><h1>400 Bad Request</h1></body></html>'
         http_400_len equ $ - http_400_response
+        http_404_response:
+                db 'HTTP/1.1 404 Not Found', 0x0d, 0x0a, 'Content-Type: text/html', 0x0d, 0x0a
+                db 'Content-Length: 48', 0x0d, 0x0a, 'Connection: close', 0x0d, 0x0a, 0x0d, 0x0a
+                db '<html><body><h1>404 Not Found</h1></body></html>'
+        http_404_len equ $ - http_404_response
 
 section .bss
         request_buffer: resb 8192
@@ -84,6 +91,8 @@ section .text
         extern build_temp_filename
         extern find_boundary_value
         extern find_filename_value
+        extern find_filename_from_url
+        extern build_gallery_filepath
 
         global _start
         
@@ -168,6 +177,7 @@ _start:
 
 .handle_request:
 
+        ; DEBUG PRINT
         lea rsi, [request_buffer]
         mov rdx, req_buff_len
         mov rax, 1
@@ -385,29 +395,154 @@ jmp .exit_client_success
         syscall
         jmp .exit_client_success
 
-.handle_put
+.handle_put:
         mov rax, 1
         mov rdi, 1
         lea rsi, [put_msg]
         mov rdx, put_len
         syscall
-; for now jump to exit client success
-jmp .exit_client_success
+        ; 1. Parse filename from URL
+        lea rdi, [request_buffer]
+        mov rsi, r12
+        call find_filename_from_url
+        cmp rax, 0
+        je .handle_bad_request
+        mov [filename_len], rdx
+        lea rdi, [parsed_filename]
+        mov rsi, rax
+        mov rcx, rdx
+        rep movsb
+        ; 2. Build final path
+        lea rdx, [final_filepath]
+        lea rdi, [parsed_filename] ; <-- Corrected this line
+        mov rsi, [filename_len]
+        call build_gallery_filepath
+        ; 3. Open file for writing
+        mov rax, 2
+        lea rdi, [final_filepath]
+        mov rsi, 65 ; O_CREAT | O_WRONLY
+        mov rdx, 0644o
+        syscall
+        mov r15, rax ; r15 = file descriptor
+        cmp r15, 0
+        jl .handle_not_found
+        ; 4. Get Content-Length
+        lea rdi, [request_buffer]
+        mov rsi, r12
+        call find_content_length_value
+        cmp rax, 0
+        je .handle_bad_request
+        mov rdi, rax
+        lea rsi, [end_pointer]
+        mov rdx, 10
+        call strtoll
+        mov r13, rax
+        
+        ; -- FIXED: Handle body data from initial packet --
+        ; 5. Find end of headers
+        lea rdi, [request_buffer]
+        mov rsi, r12
+        lea rdx, [crlf_separator]
+        mov rcx, crlf_separator_len
+        call memmem
+        cmp rax, 0
+        je .handle_bad_request
 
-.handle_delete
+        ; 6. Calculate pointer and size of initial body chunk
+        add rax, crlf_separator_len
+        mov r9, rax ; r9 = pointer to body
+        lea rdi, [request_buffer]
+        sub rax, rdi ; rax = size of headers
+        mov r10, r12
+        sub r10, rax ; r10 = size of body in initial buffer
+
+        ; 7. Write the initial body chunk
+        mov rdx, r10
+        mov rsi, r9
+        mov rdi, r15
+        mov rax, 1
+        syscall
+        
+        ; 8. Initialize bytes read counter
+        mov r14, r10
+
+.put_loop:
+        cmp r14, r13
+        jge .put_finished
+        mov rax, 0
+        mov rdi, [client_fd]
+        lea rsi, [request_buffer]
+        mov rdx, req_buff_len
+        syscall
+        cmp rax, 0
+        jle .put_finished
+        mov rdx, rax
+        mov rdi, r15
+        lea rsi, [request_buffer]
+        mov rax, 1
+        syscall
+        add r14, rdx
+        jmp .put_loop
+.put_finished:
+        mov rax, 3
+        mov rdi, r15
+        syscall
+        mov rax, 1
+        mov rdi, [client_fd]
+        lea rsi, [http_201_response]
+        mov rdx, http_201_len
+        syscall
+        jmp .exit_client_success
+
+.handle_delete:
         mov rax, 1
         mov rdi, 1
         lea rsi, [delete_msg]
         mov rdx, delete_len
         syscall
-; for now jump to exit client success
-jmp .exit_client_success
+        ; 1. Parse filename from URL
+        lea rdi, [request_buffer]
+        mov rsi, r12
+        call find_filename_from_url
+        cmp rax, 0
+        je .handle_bad_request
+        mov [filename_len], rdx
+        lea rdi, [parsed_filename]
+        mov rsi, rax
+        mov rcx, rdx
+        rep movsb
+        ; 2. Build final path
+        lea rdx, [final_filepath]
+        lea rdi, [parsed_filename]
+        mov rsi, [filename_len]
+        call build_gallery_filepath
+        ; 3. Unlink (delete) the file
+        mov rax, 87
+        lea rdi, [final_filepath]
+        syscall
+        cmp rax, 0
+        jl .handle_not_found
+        ; 4. Send 204 No Content response
+        mov rax, 1
+        mov rdi, [client_fd]
+        lea rsi, [http_204_response]
+        mov rdx, http_204_len
+        syscall
+        jmp .exit_client_success
 
 .handle_bad_request:
         mov rax, 1
         mov rdi, [client_fd]
         lea rsi, [http_400_response]
         mov rdx, http_400_len
+        syscall
+        jmp .exit_client_success
+
+.handle_not_found:
+        mov rax, 1
+        mov rdi, [client_fd]
+        lea rsi, [http_404_response]
+        mov rdx, http_404_len
         syscall
         jmp .exit_client_success
 

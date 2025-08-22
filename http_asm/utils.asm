@@ -3,12 +3,17 @@ section .data
         prefix_len equ $ - temp_filename_prefix - 1
         temp_filename_suffix db '.tmp', 0
         suffix_len equ $ - temp_filename_suffix - 1
+        app_dir_prefix db 'app/img/', 0
+        app_dir_prefix_len equ $ - app_dir_prefix - 1
+        final_filename_suffix db '.png', 0
+        final_suffix_len equ $ - final_filename_suffix - 1
+        
 
 section .text
-        ; -- CHANGED: Removed 'extern full_temp_path' to make this file self-contained.
 
         global integer_to_ascii
         global build_temp_filename
+        global build_gallery_filepath
 
 ; Converts a 64-bit integer to a null-terminated ASCII string.
 ; Input:
@@ -69,3 +74,32 @@ build_temp_filename:
         mov byte [rdi], 0
 
         ret
+
+; Input:
+;   RDI: Pointer to the filename string (no extension).
+;   RSI: Length of the filename string.
+;   RDX: Pointer to the destination buffer.
+build_gallery_filepath:
+    push rdi ; Save filename pointer
+    push rsi ; Save filename length
+    
+    mov rdi, rdx ; Set RDI to be the destination buffer
+
+    ; 1. Copy the "app/img/" prefix
+    lea rsi, [app_dir_prefix]
+    mov rcx, app_dir_prefix_len
+    rep movsb
+
+    ; 2. Copy the filename
+    pop rcx ; Restore filename length into RCX
+    pop rsi ; Restore filename pointer into RSI
+    rep movsb
+
+    ; 3. Copy the ".png" suffix
+    lea rsi, [final_filename_suffix]
+    mov rcx, final_suffix_len
+    rep movsb
+
+    ; 4. Add the null terminator
+    mov byte [rdi], 0
+    ret

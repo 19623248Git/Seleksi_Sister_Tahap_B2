@@ -67,6 +67,30 @@ section .data
                 db '<html><body><h1>404 Not Found</h1></body></html>'
         http_404_len equ $ - http_404_response
 
+        web_root           db 'app', 0  ; The root directory for serving files
+        web_root_len       equ $ - web_root - 1
+        index_html_path    db '/index.html', 0  
+
+        ; Content-Type Headers
+        content_type_html  db 'Content-Type: text/html', 0x0d, 0x0a
+        content_type_css   db 'Content-Type: text/css', 0x0d, 0x0a
+        content_type_js    db 'Content-Type: application/javascript', 0x0d, 0x0a
+        content_type_jpg   db 'Content-Type: image/jpeg', 0x0d, 0x0a
+        content_type_png   db 'Content-Type: image/png', 0x0d, 0x0a
+        content_type_ico   db 'Content-Type: image/x-icon', 0x0d, 0x0a
+        content_type_bin   db 'Content-Type: application/octet-stream', 0x0d, 0x0a ; Default
+
+        ; HTTP 200 OK Response parts
+        http_200_ok        db 'HTTP/1.1 200 OK', 0x0d, 0x0a
+        http_200_ok_len    equ $ - http_200_ok
+        content_len_header db 'Content-Length: '
+        content_len_len    equ $ - content_len_header
+        crlf               db 0x0d, 0x0a
+        crlf_len           equ $ - crlf
+
+        len_dbg_msg     db  '>>> filename_len value: ', 0
+        len_dbg_msg_len equ $ - len_dbg_msg
+
 section .bss
         request_buffer: resb 8192
         req_buff_len equ $ - request_buffer
@@ -82,6 +106,10 @@ section .bss
         filename_len: resq 1
         final_filepath: resb 256
         file_copy_buffer: resb 8192
+        stat_buf: resb 144 ; Buffer for the stat struct
+        file_path: resb 256 ; To store the full local path of the requested file
+        file_size_ascii: resb 20  ; To store file size as a string
+        header_buffer:   resb 512
 
 section .text
         extern memmem
@@ -200,14 +228,156 @@ _start:
 
         jmp .handle_bad_request
 
-.handle_get
+.handle_get:
         mov rax, 1
         mov rdi, 1
         lea rsi, [get_msg]
         mov rdx, get_len
         syscall
-; for now jump to exit client success
-jmp .exit_client_success
+
+        ; 1. Manually parse the filename
+        lea r8, [request_buffer + 4] 
+        mov rdi, r8                  
+        mov rcx, 2048                
+        mov al, ' '                  
+        repne scasb                  
+
+        cmp rcx, 0
+        je .handle_bad_request
+
+        mov rdx, rdi
+        sub rdx, r8
+        dec rdx
+        mov rax, r8
+
+        ; Store the parsed filename
+        mov [filename_len], rdx
+        lea rdi, [parsed_filename]
+        mov rsi, rax
+        mov rcx, rdx
+        rep movsb
+        mov byte [rdi], 0
+
+    ; Handle root path request (e.g., GET / HTTP/1.1)
+        mov r10, [filename_len]      ; Load the length into a register first
+        cmp r10, 1                   ; THEN compare the register's value
+        jne .build_full_path
+
+        lea r10, [parsed_filename]
+        cmp byte [r10], '/'
+        jne .build_full_path
+    
+        lea rdi, [parsed_filename]
+        lea rsi, [index_html_path]
+        mov rcx, 12
+        rep movsb
+        mov qword [filename_len], 11
+
+.build_full_path:
+    ; 2. Build the full local file path
+    lea rdi, [file_path]
+    lea rsi, [web_root]
+    mov rcx, web_root_len
+    rep movsb
+    
+    lea rsi, [parsed_filename]
+    mov rcx, [filename_len]
+    rep movsb
+    mov byte [rdi], 0
+
+    ; 3. Use 'stat' to check for the file
+    mov rax, 4
+    lea rdi, [file_path]
+    lea rsi, [stat_buf]
+    syscall
+    cmp rax, 0
+    jl .handle_not_found
+
+    ; 4. Get file size and convert to ASCII
+    mov r13, [stat_buf + 48]
+    mov rdi, r13
+    lea rsi, [file_size_ascii]
+    call integer_to_ascii
+    mov r14, rax
+
+    ; 5. *** NEW: Build the entire HTTP header block in memory ***
+    lea rdi, [header_buffer] ; RDI is the cursor for our buffer
+    mov r15, rdi             ; R15 holds the start address for length calculation
+
+    ; Copy status line: "HTTP/1.1 200 OK\r\n"
+    lea rsi, [http_200_ok]
+    mov rcx, http_200_ok_len
+    rep movsb
+
+    ; Copy Content-Type header
+    lea rsi, [content_type_html]
+    mov rcx, 24 ; Length of 'Content-Type: text/html\r\n'
+    rep movsb
+
+    ; Copy "Content-Length: "
+    lea rsi, [content_len_header]
+    mov rcx, content_len_len
+    rep movsb
+
+    ; Copy the file size string
+    lea rsi, [file_size_ascii]
+    mov rcx, r14
+    rep movsb
+
+    ; Copy the CRLF after the content length
+    lea rsi, [crlf]
+    mov rcx, crlf_len
+    rep movsb
+
+    ; Copy the FINAL CRLF to create the blank line separator
+    lea rsi, [crlf]
+    mov rcx, crlf_len
+    rep movsb
+
+    ; Calculate total header length
+    mov rdx, rdi    ; current cursor position
+    sub rdx, r15    ; minus start position
+    
+    ; Send the entire header block in one syscall
+    mov rax, 1
+    mov rdi, [client_fd]
+    lea rsi, [header_buffer]
+    syscall ; RDX already holds the length
+
+    ; 6. Open and send the file content (this logic is unchanged)
+    mov rax, 2
+    lea rdi, [file_path]
+    mov rsi, 0
+    mov rdx, 0
+    syscall
+    mov r15, rax
+    cmp r15, 0
+    jl .handle_not_found
+
+.send_file_loop:
+    mov rax, 0
+    mov rdi, r15
+    lea rsi, [file_copy_buffer]
+    mov rdx, 8192
+    syscall
+    
+    cmp rax, 0
+    jle .send_file_finished
+    
+    mov rdx, rax
+    mov rax, 1
+    mov rdi, [client_fd]
+    lea rsi, [file_copy_buffer]
+    syscall
+    
+    jmp .send_file_loop
+
+.send_file_finished:
+    mov rax, 3
+    mov rdi, r15
+    syscall
+    
+    jmp .exit_client_success
 
 .handle_post:
         mov rax, 1

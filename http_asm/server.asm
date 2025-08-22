@@ -24,9 +24,15 @@ section .data
         fork_err_len equ $ - fork_err_msg
 
         ; Method messages for logging/debugging
-        post_msg db 'processing post request.', 0x0a, 0
+        get_msg db 'processing GET request.', 0x0a, 0
+        get_len equ $ - get_msg
+        post_msg db 'processing POST request.', 0x0a, 0
         post_len equ $ - post_msg
-        
+        put_msg db 'processing PUT request.', 0x0a, 0
+        put_len equ $ - put_msg
+        delete_msg db 'processing DELETE request.', 0x0a, 0
+        delete_len equ $ - delete_msg
+
         finished_writing_msg db 'Finished writing.', 0x0a, 0
         finished_writing_msg_len equ $ - finished_writing_msg
 
@@ -161,10 +167,37 @@ _start:
         jmp .handle_request
 
 .handle_request:
+
+        lea rsi, [request_buffer]
+        mov rdx, req_buff_len
+        mov rax, 1
+        mov rdi, 1
+        syscall
+
         mov eax, dword [request_buffer]
+
+        cmp eax, "GET "
+        je .handle_get
+
         cmp eax, "POST"
         je .handle_post
+
+        cmp eax, "PUT "
+        je .handle_put
+
+        cmp eax, "DELE"
+        je .handle_delete
+
         jmp .handle_bad_request
+
+.handle_get
+        mov rax, 1
+        mov rdi, 1
+        lea rsi, [get_msg]
+        mov rdx, get_len
+        syscall
+; for now jump to exit client success
+jmp .exit_client_success
 
 .handle_post:
         mov rax, 1
@@ -351,6 +384,24 @@ _start:
         mov rdx, http_201_len
         syscall
         jmp .exit_client_success
+
+.handle_put
+        mov rax, 1
+        mov rdi, 1
+        lea rsi, [put_msg]
+        mov rdx, put_len
+        syscall
+; for now jump to exit client success
+jmp .exit_client_success
+
+.handle_delete
+        mov rax, 1
+        mov rdi, 1
+        lea rsi, [delete_msg]
+        mov rdx, delete_len
+        syscall
+; for now jump to exit client success
+jmp .exit_client_success
 
 .handle_bad_request:
         mov rax, 1

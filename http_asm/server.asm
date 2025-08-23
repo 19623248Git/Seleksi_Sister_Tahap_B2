@@ -72,13 +72,21 @@ section .data
         index_html_path    db '/index.html', 0  
 
         ; Content-Type Headers
+        ; Content-Type Headers
         content_type_html  db 'Content-Type: text/html', 0x0d, 0x0a
-        content_type_css   db 'Content-Type: text/css', 0x0d, 0x0a
-        content_type_js    db 'Content-Type: application/javascript', 0x0d, 0x0a
-        content_type_jpg   db 'Content-Type: image/jpeg', 0x0d, 0x0a
+        content_type_html_len equ $ - content_type_html
         content_type_png   db 'Content-Type: image/png', 0x0d, 0x0a
+        content_type_png_len equ $ - content_type_png
+        content_type_jpg   db 'Content-Type: image/jpeg', 0x0d, 0x0a
+        content_type_jpg_len equ $ - content_type_jpg
+        content_type_css   db 'Content-Type: text/css', 0x0d, 0x0a
+        content_type_css_len equ $ - content_type_css
+        content_type_js    db 'Content-Type: application/javascript', 0x0d, 0x0a
+        content_type_js_len equ $ - content_type_js
         content_type_ico   db 'Content-Type: image/x-icon', 0x0d, 0x0a
+        content_type_ico_len equ $ - content_type_ico
         content_type_bin   db 'Content-Type: application/octet-stream', 0x0d, 0x0a ; Default
+        content_type_bin_len equ $ - content_type_bin
 
         ; HTTP 200 OK Response parts
         http_200_ok        db 'HTTP/1.1 200 OK', 0x0d, 0x0a
@@ -90,6 +98,9 @@ section .data
 
         len_dbg_msg     db  '>>> filename_len value: ', 0
         len_dbg_msg_len equ $ - len_dbg_msg
+
+        dbg_content_type_msg db '>>> Content-Type returned: '
+        dbg_content_type_msg_len equ $ - dbg_content_type_msg
 
 section .bss
         request_buffer: resb 8192
@@ -229,59 +240,57 @@ _start:
         jmp .handle_bad_request
 
 .handle_get:
-        mov rax, 1
-        mov rdi, 1
-        lea rsi, [get_msg]
-        mov rdx, get_len
-        syscall
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [get_msg]
+    mov rdx, get_len
+    syscall
 
-        ; 1. Manually parse the filename
-        lea r8, [request_buffer + 4] 
-        mov rdi, r8                  
-        mov rcx, 2048                
-        mov al, ' '                  
-        repne scasb                  
+    ; 1. Manually parse the filename
+    lea r8, [request_buffer + 4] 
+    mov rdi, r8                  
+    mov rcx, 2048                
+    mov al, ' '                  
+    repne scasb                  
+    cmp rcx, 0
+    je .handle_bad_request
+    mov rdx, rdi
+    sub rdx, r8
+    dec rdx
+    mov rax, r8
 
-        cmp rcx, 0
-        je .handle_bad_request
+    ; Store length and filename
+    mov [filename_len], rdx
+    lea rdi, [parsed_filename]
+    mov rsi, rax
+    mov rcx, rdx
+    rep movsb
+    mov byte [rdi], 0
 
-        mov rdx, rdi
-        sub rdx, r8
-        dec rdx
-        mov rax, r8
+    ; Handle root path request ('/')
+    mov r10d, dword [filename_len]
+    cmp r10d, 1
+    jne .build_full_path
 
-        ; Store the parsed filename
-        mov [filename_len], rdx
-        lea rdi, [parsed_filename]
-        mov rsi, rax
-        mov rcx, rdx
-        rep movsb
-        mov byte [rdi], 0
-
-    ; Handle root path request (e.g., GET / HTTP/1.1)
-        mov r10, [filename_len]      ; Load the length into a register first
-        cmp r10, 1                   ; THEN compare the register's value
-        jne .build_full_path
-
-        lea r10, [parsed_filename]
-        cmp byte [r10], '/'
-        jne .build_full_path
+    lea r10, [parsed_filename]
+    cmp byte [r10], '/'
+    jne .build_full_path
     
-        lea rdi, [parsed_filename]
-        lea rsi, [index_html_path]
-        mov rcx, 12
-        rep movsb
-        mov qword [filename_len], 11
+    ; Is root, rewrite to serve /index.html
+    lea rdi, [parsed_filename]
+    lea rsi, [index_html_path]
+    mov rcx, 12
+    rep movsb
+    mov qword [filename_len], 11
 
 .build_full_path:
-    ; 2. Build the full local file path
     lea rdi, [file_path]
     lea rsi, [web_root]
     mov rcx, web_root_len
     rep movsb
     
     lea rsi, [parsed_filename]
-    mov rcx, [filename_len]
+    mov ecx, dword [filename_len]
     rep movsb
     mov byte [rdi], 0
 
@@ -300,51 +309,101 @@ _start:
     call integer_to_ascii
     mov r14, rax
 
-    ; 5. *** NEW: Build the entire HTTP header block in memory ***
-    lea rdi, [header_buffer] ; RDI is the cursor for our buffer
-    mov r15, rdi             ; R15 holds the start address for length calculation
+    ; --- LOGIC TO DETERMINE CONTENT-TYPE IS NOW INLINED ---
+    ; We push critical registers to the stack to keep them safe
+    push r14
+    push r13
 
-    ; Copy status line: "HTTP/1.1 200 OK\r\n"
+    ; Find the last '.'
+    lea rdi, [parsed_filename]
+    mov esi, dword [filename_len]
+    mov rax, rdi    
+    add rax, rsi    
+    dec rax         
+    std             
+    mov rdi, rax    
+    mov rcx, rsi    
+    mov al, '.'     
+    repne scasb
+    cld             
+    jne .inline_set_default
+
+    ; Found '.'. Pointer to extension is at [rdi + 2]
+    lea rbx, [rdi + 2] 
+
+    ; Check for .png
+    cmp byte [rbx], 'p'
+    jne .inline_try_jpg
+    cmp byte [rbx+1], 'n'
+    jne .inline_try_jpg
+    cmp byte [rbx+2], 'g'
+    jne .inline_try_jpg
+    jmp .inline_set_png
+
+.inline_try_jpg:
+    cmp byte [rbx], 'j'
+    jne .inline_set_html ; Fallback to html if it's not a known type
+    cmp byte [rbx+1], 'p'
+    jne .inline_set_html
+    cmp byte [rbx+2], 'g'
+    jne .inline_set_html
+    jmp .inline_set_jpg
+
+.inline_set_png:
+    lea r10, [content_type_png]
+    mov r11, content_type_png_len
+    jmp .inline_done
+
+.inline_set_jpg:
+    lea r10, [content_type_jpg]
+    mov r11, content_type_jpg_len
+    jmp .inline_done
+
+.inline_set_html:
+    lea r10, [content_type_html]
+    mov r11, content_type_html_len
+    jmp .inline_done
+
+.inline_set_default:
+    lea r10, [content_type_bin]
+    mov r11, content_type_bin_len
+
+.inline_done:
+    pop r13 ; Restore file size
+    pop r14 ; Restore ascii length
+    ; --- END OF INLINED LOGIC ---
+
+    ; 5. Build the entire HTTP header block in memory
+    lea rdi, [header_buffer]
+    mov r15, rdi
     lea rsi, [http_200_ok]
     mov rcx, http_200_ok_len
     rep movsb
-
-    ; Copy Content-Type header
-    lea rsi, [content_type_html]
-    mov rcx, 24 ; Length of 'Content-Type: text/html\r\n'
+    mov rsi, r10 ; Use pointer from inlined logic
+    mov rcx, r11 ; Use length from inlined logic
     rep movsb
-
-    ; Copy "Content-Length: "
     lea rsi, [content_len_header]
     mov rcx, content_len_len
     rep movsb
-
-    ; Copy the file size string
     lea rsi, [file_size_ascii]
     mov rcx, r14
     rep movsb
-
-    ; Copy the CRLF after the content length
+    lea rsi, [crlf]
+    mov rcx, crlf_len
+    rep movsb
     lea rsi, [crlf]
     mov rcx, crlf_len
     rep movsb
 
-    ; Copy the FINAL CRLF to create the blank line separator
-    lea rsi, [crlf]
-    mov rcx, crlf_len
-    rep movsb
-
-    ; Calculate total header length
-    mov rdx, rdi    ; current cursor position
-    sub rdx, r15    ; minus start position
-    
-    ; Send the entire header block in one syscall
+    ; Calculate total header length and send
+    mov rdx, rdi
+    sub rdx, r15
     mov rax, 1
     mov rdi, [client_fd]
     lea rsi, [header_buffer]
-    syscall ; RDX already holds the length
+    syscall
 
-    ; 6. Open and send the file content (this logic is unchanged)
+    ; 6. Open and send the file content
     mov rax, 2
     lea rdi, [file_path]
     mov rsi, 0
@@ -360,23 +419,19 @@ _start:
     lea rsi, [file_copy_buffer]
     mov rdx, 8192
     syscall
-    
     cmp rax, 0
     jle .send_file_finished
-    
     mov rdx, rax
     mov rax, 1
     mov rdi, [client_fd]
     lea rsi, [file_copy_buffer]
     syscall
-    
     jmp .send_file_loop
 
 .send_file_finished:
     mov rax, 3
     mov rdi, r15
     syscall
-    
     jmp .exit_client_success
 
 .handle_post:
@@ -771,3 +826,122 @@ build_final_filepath:
 
         mov byte [rdi], 0
         ret
+
+; --- Subroutine to determine the correct Content-Type header ---
+; This version uses a standard stack frame (rbp) for maximum stability.
+; Input: RDI = pointer to filename, RSI = length of filename
+; Output: RAX = pointer to content-type string, RDX = length of string
+determine_content_type:
+    push    rbp             ; 1. Create the stack frame
+    mov     rbp, rsp
+
+    push    rdi             ; Save registers we will use
+    push    rsi
+    push    rcx
+    push    rbx
+
+    ; Find the last '.' in the filename by scanning backwards
+    mov     rax, rdi    
+    add     rax, rsi    
+    dec     rax         
+    std             
+    mov     rdi, rax    
+    mov     rcx, rsi    
+    mov     al, '.'     
+    repne   scasb
+    cld             
+    jne     .set_default_content_type
+
+    ; A '.' was found. RDI points one byte BEFORE the '.'.
+    lea     rbx, [rdi + 2] ; RBX now points to the start of the extension
+
+    ; Check for .png
+    cmp     byte [rbx], 'p'
+    jne     .try_jpg
+    cmp     byte [rbx+1], 'n'
+    jne     .try_jpg
+    cmp     byte [rbx+2], 'g'
+    jne     .try_jpg
+    jmp     .set_png_type
+
+.try_jpg:
+    cmp     byte [rbx], 'j'
+    jne     .try_css
+    cmp     byte [rbx+1], 'p'
+    jne     .try_css
+    cmp     byte [rbx+2], 'g'
+    jne     .try_css
+    jmp     .set_jpg_type
+    
+.try_css:
+    cmp     byte [rbx], 'c'
+    jne     .try_js
+    cmp     byte [rbx+1], 's'
+    jne     .try_js
+    cmp     byte [rbx+2], 's'
+    jne     .try_js
+    jmp     .set_css_type
+
+.try_js:
+    cmp     byte [rbx], 'j'
+    jne     .try_ico
+    cmp     byte [rbx+1], 's'
+    jne     .try_ico
+    jmp     .set_js_type
+
+.try_ico:
+    cmp     byte [rbx], 'i'
+    jne     .try_jpeg
+    cmp     byte [rbx+1], 'c'
+    jne     .try_jpeg
+    cmp     byte [rbx+2], 'o'
+    jne     .try_jpeg
+    jmp     .set_ico_type
+    
+.try_jpeg:
+    cmp     dword [rbx], 'jpeg'
+    je      .set_jpg_type
+    jmp     .set_html_type
+
+.set_png_type:
+    lea     rax, [content_type_png]
+    mov     rdx, content_type_png_len
+    jmp     .content_type_done
+
+.set_jpg_type:
+    lea     rax, [content_type_jpg]
+    mov     rdx, content_type_jpg_len
+    jmp     .content_type_done
+
+.set_css_type:
+    lea     rax, [content_type_css]
+    mov     rdx, content_type_css_len
+    jmp     .content_type_done
+
+.set_js_type:
+    lea     rax, [content_type_js]
+    mov     rdx, content_type_js_len
+    jmp     .content_type_done
+
+.set_ico_type:
+    lea     rax, [content_type_ico]
+    mov     rdx, content_type_ico_len
+    jmp     .content_type_done
+
+.set_html_type:
+    lea     rax, [content_type_html]
+    mov     rdx, content_type_html_len
+    jmp     .content_type_done
+    
+.set_default_content_type:
+    lea     rax, [content_type_bin]
+    mov     rdx, content_type_bin_len
+
+.content_type_done:
+    pop     rbx
+    pop     rcx
+    pop     rsi
+    pop     rdi
+    
+    leave                   ; 2. Destroy the stack frame (mov rsp, rbp; pop rbp)
+    ret                     ; 3. Return

@@ -67,9 +67,12 @@ section .data
                 db '<html><body><h1>404 Not Found</h1></body></html>'
         http_404_len equ $ - http_404_response
 
-        web_root           db 'app', 0  ; The root directory for serving files
-        web_root_len       equ $ - web_root - 1
-        index_html_path    db '/index.html', 0  
+        web_root          db 'app', 0  ; The root directory for serving files
+        web_root_len      equ $ - web_root - 1
+        index_html_path   db '/index.html', 0
+        api_images_path   db '/api/images', 0
+        api_images_path_len equ $ - api_images_path - 1
+        img_dir_path      db 'app/img', 0
 
         ; Content-Type Headers
         content_type_html  db 'Content-Type: text/html', 0x0d, 0x0a
@@ -86,6 +89,8 @@ section .data
         content_type_ico_len equ $ - content_type_ico
         content_type_bin   db 'Content-Type: application/octet-stream', 0x0d, 0x0a ; Default
         content_type_bin_len equ $ - content_type_bin
+        content_type_json  db 'Content-Type: application/json', 0x0d, 0x0a
+        content_type_json_len equ $ - content_type_json
 
         ; HTTP 200 OK Response parts
         http_200_ok        db 'HTTP/1.1 200 OK', 0x0d, 0x0a
@@ -118,8 +123,10 @@ section .bss
         file_copy_buffer: resb 8192
         stat_buf: resb 144 ; Buffer for the stat struct
         file_path: resb 256 ; To store the full local path of the requested file
-        file_size_ascii: resb 20  ; To store file size as a string
+        file_size_ascii: resb 20   ; To store file size as a string
         header_buffer:   resb 512
+        dir_buffer: resb 1024
+        json_buffer: resb 4096
 
 section .text
         extern memmem
@@ -214,7 +221,6 @@ _start:
         jmp .handle_request
 
 .handle_request:
-
         ; DEBUG PRINT
         lea rsi, [request_buffer]
         mov rdx, r12 ; Only print bytes read
@@ -247,10 +253,10 @@ _start:
 
     ; 1. Manually parse the filename
     lea r8, [request_buffer + 4] 
-    mov rdi, r8                  
-    mov rcx, 2048                
-    mov al, ' '                  
-    repne scasb                  
+    mov rdi, r8             
+    mov rcx, 2048           
+    mov al, ' '             
+    repne scasb             
     cmp rcx, 0
     je .handle_bad_request
     mov rdx, rdi
@@ -266,6 +272,17 @@ _start:
     rep movsb
     mov byte [rdi], 0
 
+    ; --- API ROUTE CHECK ---
+    mov rdi, [filename_len]
+    cmp rdi, api_images_path_len
+    jne .check_root_path
+    mov rcx, rdi
+    lea rsi, [api_images_path]
+    lea rdi, [parsed_filename]
+    repe cmpsb
+    je .handle_api_list_images
+
+.check_root_path:
     ; Handle root path request ('/')
     mov r10d, dword [filename_len]
     cmp r10d, 1
@@ -375,6 +392,156 @@ _start:
     mov rax, 3
     mov rdi, r15
     syscall
+    jmp .exit_client_success
+
+.handle_api_list_images:
+    ; Open the directory
+    mov rax, 2 ; sys_open
+    lea rdi, [img_dir_path]
+    mov rsi, 0x10000 ; O_DIRECTORY
+    mov rdx, 0
+    syscall
+    cmp rax, 0
+    jl .handle_not_found
+    mov r15, rax ; r15 = directory file descriptor
+
+    ; Prepare JSON buffer
+    lea r14, [json_buffer]
+    mov byte [r14], '['
+    inc r14
+    mov r13, 0 ; r13 = flag for first element (0 = is first)
+
+.read_dir_loop:
+    mov rax, 217 ; sys_getdents64
+    mov rdi, r15
+    lea rsi, [dir_buffer]
+    mov rdx, 1024
+    syscall
+    cmp rax, 0
+    jle .build_json_end ; If 0 or less, we are done or there was an error
+
+    mov rbx, dir_buffer ; rbx = current position in dir_buffer
+    mov rcx, rax ; rcx = bytes read
+
+.parse_dents_loop:
+    cmp rcx, 0
+    jle .read_dir_loop ; No more bytes in this chunk, read more
+
+    ; rbx points to a linux_dirent64 struct
+    ; Check d_type at offset 18. 8 = DT_REG (regular file)
+    cmp byte [rbx + 18], 8 
+    jne .next_dent
+
+    ; Correctly calculate filename length
+    mov rdx, rbx
+    add rdx, 19 ; rdx points to d_name (start of filename)
+    mov rdi, rdx
+    push rbx
+    push rcx
+    mov rcx, 255 
+    xor al, al   
+    repne scasb
+    mov r8, rdi  
+    sub r8, rdx  
+    dec r8       
+    pop rcx
+    pop rbx
+    
+    ; Check if filename ends with .png
+    cmp r8, 4
+    jl .next_dent ; Too short to be ".png"
+
+    cmp dword [rdx + r8 - 4], '.png'
+    jne .next_dent
+
+    ; It's a PNG file, add it to our JSON string
+    cmp r13, 0
+    je .is_first_entry
+    mov byte [r14], ','
+    inc r14
+.is_first_entry:
+    mov r13, 1 ; No longer the first entry
+    mov byte [r14], '"'
+    inc r14
+    
+    ; --- FIX: Preserve RCX across the REP MOVSB ---
+    push rcx      ; Save the main loop counter
+    mov rsi, rdx  
+    mov rdi, r14  
+    mov rcx, r8   ; Use RCX for the copy operation
+    rep movsb
+    mov r14, rdi 
+    pop rcx       ; Restore the main loop counter
+    ; --- END FIX ---
+    
+    mov byte [r14], '"'
+    inc r14
+
+.next_dent:
+    movzx rax, word [rbx + 16] ; d_reclen
+    add rbx, rax ; Move to next entry
+    sub rcx, rax ; Decrement bytes remaining
+    jmp .parse_dents_loop
+
+.build_json_end:
+    mov byte [r14], ']'
+    inc r14
+
+    ; Close directory
+    mov rax, 3
+    mov rdi, r15
+    syscall
+
+    ; Calculate JSON length
+    lea rsi, [json_buffer]
+    mov rdx, r14
+    sub rdx, rsi
+
+    ; Build headers
+    lea rdi, [header_buffer]
+    mov r15, rdi
+    lea rsi, [http_200_ok]
+    mov rcx, http_200_ok_len
+    rep movsb
+    lea rsi, [content_type_json]
+    mov rcx, content_type_json_len
+    rep movsb
+    lea rsi, [content_len_header]
+    mov rcx, content_len_len
+    rep movsb
+    
+    ; Robustly handle integer_to_ascii
+    push rdi          ; Save current header pointer
+    mov rsi, rdi      ; Destination for the number string
+    mov rdi, rdx      ; The number to convert (JSON length)
+    call integer_to_ascii
+    pop rdi           ; Restore header pointer
+    add rdi, rax      ; Advance header pointer by length of number string
+
+    lea rsi, [crlf]
+    mov rcx, crlf_len
+    rep movsb
+    lea rsi, [crlf]
+    mov rcx, crlf_len
+    rep movsb
+
+    ; Send headers
+    mov rdx, rdi
+    sub rdx, r15
+    mov rax, 1
+    mov rdi, [client_fd]
+    lea rsi, [header_buffer]
+    syscall
+
+    ; Send JSON body
+    lea rsi, [json_buffer]
+    lea rdi, [json_buffer]
+    mov rdx, r14
+    sub rdx, rdi
+    mov rax, 1
+    mov rdi, [client_fd]
+    syscall
+
     jmp .exit_client_success
 
 .handle_post:
@@ -786,11 +953,11 @@ determine_content_type:
     ; Find the last '.' in the filename by scanning backwards
     mov     rax, rdi    
     add     rax, rsi    
-    dec     rax         
+    dec     rax     
     std             
     mov     rdi, rax    
     mov     rcx, rsi    
-    mov     al, '.'     
+    mov     al, '.'   
     repne   scasb
     cld             
     jne     .set_default_content_type
@@ -886,5 +1053,5 @@ determine_content_type:
     pop     rsi
     pop     rdi
     
-    leave                   ; 2. Destroy the stack frame (mov rsp, rbp; pop rbp)
-    ret                     ; 3. Return
+    leave               ; 2. Destroy the stack frame (mov rsp, rbp; pop rbp)
+    ret                 ; 3. Return

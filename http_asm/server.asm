@@ -72,7 +72,6 @@ section .data
         index_html_path    db '/index.html', 0  
 
         ; Content-Type Headers
-        ; Content-Type Headers
         content_type_html  db 'Content-Type: text/html', 0x0d, 0x0a
         content_type_html_len equ $ - content_type_html
         content_type_png   db 'Content-Type: image/png', 0x0d, 0x0a
@@ -218,7 +217,7 @@ _start:
 
         ; DEBUG PRINT
         lea rsi, [request_buffer]
-        mov rdx, req_buff_len
+        mov rdx, r12 ; Only print bytes read
         mov rax, 1
         mov rdi, 1
         syscall
@@ -309,69 +308,13 @@ _start:
     call integer_to_ascii
     mov r14, rax
 
-    ; --- LOGIC TO DETERMINE CONTENT-TYPE IS NOW INLINED ---
-    ; We push critical registers to the stack to keep them safe
-    push r14
-    push r13
-
-    ; Find the last '.'
+    ; --- FIX: Call the correct subroutine to determine content type ---
     lea rdi, [parsed_filename]
-    mov esi, dword [filename_len]
-    mov rax, rdi    
-    add rax, rsi    
-    dec rax         
-    std             
-    mov rdi, rax    
-    mov rcx, rsi    
-    mov al, '.'     
-    repne scasb
-    cld             
-    jne .inline_set_default
-
-    ; Found '.'. Pointer to extension is at [rdi + 2]
-    lea rbx, [rdi + 2] 
-
-    ; Check for .png
-    cmp byte [rbx], 'p'
-    jne .inline_try_jpg
-    cmp byte [rbx+1], 'n'
-    jne .inline_try_jpg
-    cmp byte [rbx+2], 'g'
-    jne .inline_try_jpg
-    jmp .inline_set_png
-
-.inline_try_jpg:
-    cmp byte [rbx], 'j'
-    jne .inline_set_html ; Fallback to html if it's not a known type
-    cmp byte [rbx+1], 'p'
-    jne .inline_set_html
-    cmp byte [rbx+2], 'g'
-    jne .inline_set_html
-    jmp .inline_set_jpg
-
-.inline_set_png:
-    lea r10, [content_type_png]
-    mov r11, content_type_png_len
-    jmp .inline_done
-
-.inline_set_jpg:
-    lea r10, [content_type_jpg]
-    mov r11, content_type_jpg_len
-    jmp .inline_done
-
-.inline_set_html:
-    lea r10, [content_type_html]
-    mov r11, content_type_html_len
-    jmp .inline_done
-
-.inline_set_default:
-    lea r10, [content_type_bin]
-    mov r11, content_type_bin_len
-
-.inline_done:
-    pop r13 ; Restore file size
-    pop r14 ; Restore ascii length
-    ; --- END OF INLINED LOGIC ---
+    mov rsi, [filename_len]
+    call determine_content_type
+    mov r10, rax ; RAX holds the content type string pointer
+    mov r11, rdx ; RDX holds the content type string length
+    ; --- END FIX ---
 
     ; 5. Build the entire HTTP header block in memory
     lea rdi, [header_buffer]
@@ -379,8 +322,8 @@ _start:
     lea rsi, [http_200_ok]
     mov rcx, http_200_ok_len
     rep movsb
-    mov rsi, r10 ; Use pointer from inlined logic
-    mov rcx, r11 ; Use length from inlined logic
+    mov rsi, r10 ; Use pointer from determine_content_type
+    mov rcx, r11 ; Use length from determine_content_type
     rep movsb
     lea rsi, [content_len_header]
     mov rcx, content_len_len

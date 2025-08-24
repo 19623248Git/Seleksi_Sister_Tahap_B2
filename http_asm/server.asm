@@ -33,18 +33,21 @@ section .data
         delete_msg db 'processing DELETE request.', 0x0a, 0
         delete_len equ $ - delete_msg
 
-        finished_writing_msg db 'Finished writing.', 0x0a, 0
-        finished_writing_msg_len equ $ - finished_writing_msg
-
         ; Header and separator definitions for parsing
         expect_header db 'Expect: 100-continue'
         expect_header_len equ $ - expect_header
         crlf_separator db 0x0d, 0x0a, 0x0d, 0x0a
         crlf_separator_len equ $ - crlf_separator
 
-        ; -- ADDED: Prefix for the final file destination --
+        ; Filepath construction parts
         app_dir_prefix db 'app/img/', 0
         app_dir_prefix_len equ $ - app_dir_prefix - 1
+        final_filename_suffix db '.png', 0
+        final_suffix_len equ $ - final_filename_suffix - 1
+        
+        ; --- FIXED: Keys for parsing ---
+        gallery_path_key   db '/gallery/', 0
+        gallery_path_key_len equ $ - gallery_path_key - 1
 
         ; HTTP Responses
         continue_response db 'HTTP/1.1 100 Continue', 0x0d, 0x0a, 0x0d, 0x0a
@@ -70,8 +73,9 @@ section .data
         web_root          db 'app', 0  ; The root directory for serving files
         web_root_len      equ $ - web_root - 1
         index_html_path   db '/index.html', 0
-        api_images_path   db '/api/images', 0
-        api_images_path_len equ $ - api_images_path - 1
+        ; --- FIXED: API Path ---
+        gallery_path      db '/gallery', 0
+        gallery_path_len  equ $ - gallery_path - 1
         img_dir_path      db 'app/img', 0
 
         ; Content-Type Headers
@@ -100,12 +104,6 @@ section .data
         crlf               db 0x0d, 0x0a
         crlf_len           equ $ - crlf
 
-        len_dbg_msg     db  '>>> filename_len value: ', 0
-        len_dbg_msg_len equ $ - len_dbg_msg
-
-        dbg_content_type_msg db '>>> Content-Type returned: '
-        dbg_content_type_msg_len equ $ - dbg_content_type_msg
-
 section .bss
         request_buffer: resb 8192
         req_buff_len equ $ - request_buffer
@@ -116,14 +114,13 @@ section .bss
         pid_string_buffer: resb 20
         boundary_string: resb 256
         boundary_len: resq 1
-        ; -- ADDED: BSS variables for final file handling --
         parsed_filename: resb 256
         filename_len: resq 1
         final_filepath: resb 256
         file_copy_buffer: resb 8192
-        stat_buf: resb 144 ; Buffer for the stat struct
-        file_path: resb 256 ; To store the full local path of the requested file
-        file_size_ascii: resb 20   ; To store file size as a string
+        stat_buf: resb 144
+        file_path: resb 256
+        file_size_ascii: resb 20
         header_buffer:   resb 512
         dir_buffer: resb 1024
         json_buffer: resb 4096
@@ -136,13 +133,10 @@ section .text
         extern build_temp_filename
         extern find_boundary_value
         extern find_filename_value
-        extern find_filename_from_url
-        extern build_gallery_filepath
 
         global _start
         
 _start:
-        ; ... (socket, setsockopt, bind, listen setup) ...
         mov rax, 41
         mov rdi, 2
         mov rsi, 1
@@ -221,9 +215,8 @@ _start:
         jmp .handle_request
 
 .handle_request:
-        ; DEBUG PRINT
         lea rsi, [request_buffer]
-        mov rdx, r12 ; Only print bytes read
+        mov rdx, r12
         mov rax, 1
         mov rdi, 1
         syscall
@@ -232,16 +225,12 @@ _start:
 
         cmp eax, "GET "
         je .handle_get
-
         cmp eax, "POST"
         je .handle_post
-
         cmp eax, "PUT "
         je .handle_put
-
         cmp eax, "DELE"
         je .handle_delete
-
         jmp .handle_bad_request
 
 .handle_get:
@@ -251,7 +240,6 @@ _start:
     mov rdx, get_len
     syscall
 
-    ; 1. Manually parse the filename
     lea r8, [request_buffer + 4] 
     mov rdi, r8             
     mov rcx, 2048           
@@ -264,7 +252,6 @@ _start:
     dec rdx
     mov rax, r8
 
-    ; Store length and filename
     mov [filename_len], rdx
     lea rdi, [parsed_filename]
     mov rsi, rax
@@ -272,27 +259,23 @@ _start:
     rep movsb
     mov byte [rdi], 0
 
-    ; --- API ROUTE CHECK ---
     mov rdi, [filename_len]
-    cmp rdi, api_images_path_len
+    cmp rdi, gallery_path_len
     jne .check_root_path
     mov rcx, rdi
-    lea rsi, [api_images_path]
+    lea rsi, [gallery_path]
     lea rdi, [parsed_filename]
     repe cmpsb
     je .handle_api_list_images
 
 .check_root_path:
-    ; Handle root path request ('/')
     mov r10d, dword [filename_len]
     cmp r10d, 1
     jne .build_full_path
-
     lea r10, [parsed_filename]
     cmp byte [r10], '/'
     jne .build_full_path
     
-    ; Is root, rewrite to serve /index.html
     lea rdi, [parsed_filename]
     lea rsi, [index_html_path]
     mov rcx, 12
@@ -310,7 +293,6 @@ _start:
     rep movsb
     mov byte [rdi], 0
 
-    ; 3. Use 'stat' to check for the file
     mov rax, 4
     lea rdi, [file_path]
     lea rsi, [stat_buf]
@@ -318,29 +300,25 @@ _start:
     cmp rax, 0
     jl .handle_not_found
 
-    ; 4. Get file size and convert to ASCII
     mov r13, [stat_buf + 48]
     mov rdi, r13
     lea rsi, [file_size_ascii]
     call integer_to_ascii
     mov r14, rax
 
-    ; --- FIX: Call the correct subroutine to determine content type ---
     lea rdi, [parsed_filename]
     mov rsi, [filename_len]
     call determine_content_type
-    mov r10, rax ; RAX holds the content type string pointer
-    mov r11, rdx ; RDX holds the content type string length
-    ; --- END FIX ---
+    mov r10, rax
+    mov r11, rdx
 
-    ; 5. Build the entire HTTP header block in memory
     lea rdi, [header_buffer]
     mov r15, rdi
     lea rsi, [http_200_ok]
     mov rcx, http_200_ok_len
     rep movsb
-    mov rsi, r10 ; Use pointer from determine_content_type
-    mov rcx, r11 ; Use length from determine_content_type
+    mov rsi, r10
+    mov rcx, r11
     rep movsb
     lea rsi, [content_len_header]
     mov rcx, content_len_len
@@ -355,7 +333,6 @@ _start:
     mov rcx, crlf_len
     rep movsb
 
-    ; Calculate total header length and send
     mov rdx, rdi
     sub rdx, r15
     mov rax, 1
@@ -363,7 +340,6 @@ _start:
     lea rsi, [header_buffer]
     syscall
 
-    ; 6. Open and send the file content
     mov rax, 2
     lea rdi, [file_path]
     mov rsi, 0
@@ -395,46 +371,41 @@ _start:
     jmp .exit_client_success
 
 .handle_api_list_images:
-    ; Open the directory
-    mov rax, 2 ; sys_open
+    mov rax, 2
     lea rdi, [img_dir_path]
-    mov rsi, 0x10000 ; O_DIRECTORY
+    mov rsi, 0x10000
     mov rdx, 0
     syscall
     cmp rax, 0
     jl .handle_not_found
-    mov r15, rax ; r15 = directory file descriptor
+    mov r15, rax
 
-    ; Prepare JSON buffer
     lea r14, [json_buffer]
     mov byte [r14], '['
     inc r14
-    mov r13, 0 ; r13 = flag for first element (0 = is first)
+    mov r13, 0
 
 .read_dir_loop:
-    mov rax, 217 ; sys_getdents64
+    mov rax, 217
     mov rdi, r15
     lea rsi, [dir_buffer]
     mov rdx, 1024
     syscall
     cmp rax, 0
-    jle .build_json_end ; If 0 or less, we are done or there was an error
+    jle .build_json_end
 
-    mov rbx, dir_buffer ; rbx = current position in dir_buffer
-    mov rcx, rax ; rcx = bytes read
+    mov rbx, dir_buffer
+    mov rcx, rax
 
 .parse_dents_loop:
     cmp rcx, 0
-    jle .read_dir_loop ; No more bytes in this chunk, read more
+    jle .read_dir_loop
 
-    ; rbx points to a linux_dirent64 struct
-    ; Check d_type at offset 18. 8 = DT_REG (regular file)
     cmp byte [rbx + 18], 8 
     jne .next_dent
 
-    ; Correctly calculate filename length
     mov rdx, rbx
-    add rdx, 19 ; rdx points to d_name (start of filename)
+    add rdx, 19
     mov rdi, rdx
     push rbx
     push rcx
@@ -447,57 +418,50 @@ _start:
     pop rcx
     pop rbx
     
-    ; Check if filename ends with .png
     cmp r8, 4
-    jl .next_dent ; Too short to be ".png"
+    jl .next_dent
 
     cmp dword [rdx + r8 - 4], '.png'
     jne .next_dent
 
-    ; It's a PNG file, add it to our JSON string
     cmp r13, 0
     je .is_first_entry
     mov byte [r14], ','
     inc r14
 .is_first_entry:
-    mov r13, 1 ; No longer the first entry
+    mov r13, 1
     mov byte [r14], '"'
     inc r14
     
-    ; --- FIX: Preserve RCX across the REP MOVSB ---
-    push rcx      ; Save the main loop counter
+    push rcx
     mov rsi, rdx  
     mov rdi, r14  
-    mov rcx, r8   ; Use RCX for the copy operation
+    mov rcx, r8   
     rep movsb
     mov r14, rdi 
-    pop rcx       ; Restore the main loop counter
-    ; --- END FIX ---
+    pop rcx
     
     mov byte [r14], '"'
     inc r14
 
 .next_dent:
-    movzx rax, word [rbx + 16] ; d_reclen
-    add rbx, rax ; Move to next entry
-    sub rcx, rax ; Decrement bytes remaining
+    movzx rax, word [rbx + 16]
+    add rbx, rax
+    sub rcx, rax
     jmp .parse_dents_loop
 
 .build_json_end:
     mov byte [r14], ']'
     inc r14
 
-    ; Close directory
     mov rax, 3
     mov rdi, r15
     syscall
 
-    ; Calculate JSON length
     lea rsi, [json_buffer]
     mov rdx, r14
     sub rdx, rsi
 
-    ; Build headers
     lea rdi, [header_buffer]
     mov r15, rdi
     lea rsi, [http_200_ok]
@@ -510,13 +474,12 @@ _start:
     mov rcx, content_len_len
     rep movsb
     
-    ; Robustly handle integer_to_ascii
-    push rdi          ; Save current header pointer
-    mov rsi, rdi      ; Destination for the number string
-    mov rdi, rdx      ; The number to convert (JSON length)
+    push rdi
+    mov rsi, rdi
+    mov rdi, rdx
     call integer_to_ascii
-    pop rdi           ; Restore header pointer
-    add rdi, rax      ; Advance header pointer by length of number string
+    pop rdi
+    add rdi, rax
 
     lea rsi, [crlf]
     mov rcx, crlf_len
@@ -525,7 +488,6 @@ _start:
     mov rcx, crlf_len
     rep movsb
 
-    ; Send headers
     mov rdx, rdi
     sub rdx, r15
     mov rax, 1
@@ -533,7 +495,6 @@ _start:
     lea rsi, [header_buffer]
     syscall
 
-    ; Send JSON body
     lea rsi, [json_buffer]
     lea rdi, [json_buffer]
     mov rdx, r14
@@ -594,8 +555,6 @@ _start:
         syscall
         mov r15, rax
 
-        ; -- REVISED LOGIC for 100-continue --
-        ; Find end of main headers in the initial packet
         lea rdi, [request_buffer]
         mov rsi, r12
         lea rdx, [crlf_separator]
@@ -605,31 +564,26 @@ _start:
         je .handle_bad_request
         
         add rax, crlf_separator_len
-        mov r9, rax ; r9 = pointer to start of potential body
+        mov r9, rax
         
         lea rdi, [request_buffer]
-        sub rax, rdi ; rax = size of headers
+        sub rax, rdi
         mov r10, r12
-        sub r10, rax ; r10 = size of body in initial buffer
+        sub r10, rax
         
         cmp r10, 0
-        jne .process_first_body_chunk ; If body exists, process it
+        jne .process_first_body_chunk
 
-        ; If we are here, it was a 100-continue request with no body.
-        ; Read the first chunk of the body now.
         mov rax, 0
         mov rdi, [client_fd]
         lea rsi, [request_buffer]
         mov rdx, req_buff_len
         syscall
-        mov r12, rax ; r12 now holds the size of this new chunk
-        lea r9, [request_buffer] ; The "body" is the whole new chunk
-        mov r10, r12 ; The "body size" is the whole new chunk size
+        mov r12, rax
+        lea r9, [request_buffer]
+        mov r10, r12
 
 .process_first_body_chunk:
-        ; At this point, r9 points to the data to process, and r10 is its size.
-        
-        ; 1. Find filename within this first body chunk
         mov rdi, r9
         mov rsi, r10
         call find_filename_value
@@ -642,7 +596,6 @@ _start:
         rep movsb
         mov byte [rdi], 0
 
-        ; 2. Find the end of the part headers within this chunk
         mov rdi, r9
         mov rsi, r10
         lea rdx, [crlf_separator]
@@ -651,20 +604,18 @@ _start:
         cmp rax, 0
         je .handle_bad_request
 
-        ; 3. Calculate and write the first piece of file data
         add rax, crlf_separator_len
-        mov rsi, rax ; rsi = pointer to file data
+        mov rsi, rax
         
         lea rdi, [r9]
-        sub rax, rdi ; rax = size of part headers
+        sub rax, rdi
         mov rdx, r10
-        sub rdx, rax ; rdx = size of file data
+        sub rdx, rax
 
         mov rdi, r15
         mov rax, 1
         syscall
 
-        ; 4. Initialize the total bytes counter and jump to the loop
         mov r14, r10
         jmp .upload_loop
 
@@ -716,7 +667,7 @@ _start:
         lea rdx, [final_filepath]
         mov rsi, [filename_len]
         lea rdi, [parsed_filename]
-        call build_final_filepath
+        call build_final_filepath_with_ext
 
         mov rax, 82
         lea rdi, [full_temp_path]
@@ -736,10 +687,10 @@ _start:
         lea rsi, [put_msg]
         mov rdx, put_len
         syscall
-        ; 1. Parse filename from URL
+
         lea rdi, [request_buffer]
         mov rsi, r12
-        call find_filename_from_url
+        call find_filename_from_url_no_ext
         cmp rax, 0
         je .handle_bad_request
         mov [filename_len], rdx
@@ -747,21 +698,22 @@ _start:
         mov rsi, rax
         mov rcx, rdx
         rep movsb
-        ; 2. Build final path
+        mov byte [rdi], 0
+
         lea rdx, [final_filepath]
-        lea rdi, [parsed_filename] ; <-- Corrected this line
+        lea rdi, [parsed_filename]
         mov rsi, [filename_len]
-        call build_gallery_filepath
-        ; 3. Open file for writing
+        call build_final_filepath_with_ext
+
         mov rax, 2
         lea rdi, [final_filepath]
-        mov rsi, 65 ; O_CREAT | O_WRONLY
+        mov rsi, 65
         mov rdx, 0644o
         syscall
-        mov r15, rax ; r15 = file descriptor
+        mov r15, rax
         cmp r15, 0
-        jl .handle_not_found
-        ; 4. Get Content-Length
+        jl .handle_bad_request
+
         lea rdi, [request_buffer]
         mov rsi, r12
         call find_content_length_value
@@ -772,9 +724,7 @@ _start:
         mov rdx, 10
         call strtoll
         mov r13, rax
-        
-        ; -- FIXED: Handle body data from initial packet --
-        ; 5. Find end of headers
+
         lea rdi, [request_buffer]
         mov rsi, r12
         lea rdx, [crlf_separator]
@@ -783,50 +733,54 @@ _start:
         cmp rax, 0
         je .handle_bad_request
 
-        ; 6. Calculate pointer and size of initial body chunk
         add rax, crlf_separator_len
-        mov r9, rax ; r9 = pointer to body
+        mov r9, rax
         lea rdi, [request_buffer]
-        sub rax, rdi ; rax = size of headers
+        sub rax, rdi
         mov r10, r12
-        sub r10, rax ; r10 = size of body in initial buffer
+        sub r10, rax
 
-        ; 7. Write the initial body chunk
         mov rdx, r10
         mov rsi, r9
         mov rdi, r15
         mov rax, 1
         syscall
-        
-        ; 8. Initialize bytes read counter
-        mov r14, r10
 
-.put_loop:
+        mov r14, r10
+        jmp .put_loop_simple
+
+.put_loop_simple:
         cmp r14, r13
-        jge .put_finished
+        jge .put_finished_simple
         mov rax, 0
         mov rdi, [client_fd]
         lea rsi, [request_buffer]
         mov rdx, req_buff_len
         syscall
         cmp rax, 0
-        jle .put_finished
+        jle .put_finished_simple
+        
         mov rdx, rax
+        add r14, rdx
+        
+        mov rax, 1
         mov rdi, r15
         lea rsi, [request_buffer]
-        mov rax, 1
         syscall
-        add r14, rdx
-        jmp .put_loop
-.put_finished:
+        
+        jmp .put_loop_simple
+
+.put_finished_simple:
         mov rax, 3
         mov rdi, r15
         syscall
+        
         mov rax, 1
         mov rdi, [client_fd]
         lea rsi, [http_201_response]
         mov rdx, http_201_len
         syscall
+        
         jmp .exit_client_success
 
 .handle_delete:
@@ -835,10 +789,10 @@ _start:
         lea rsi, [delete_msg]
         mov rdx, delete_len
         syscall
-        ; 1. Parse filename from URL
+        
         lea rdi, [request_buffer]
         mov rsi, r12
-        call find_filename_from_url
+        call find_filename_from_url_no_ext
         cmp rax, 0
         je .handle_bad_request
         mov [filename_len], rdx
@@ -846,18 +800,19 @@ _start:
         mov rsi, rax
         mov rcx, rdx
         rep movsb
-        ; 2. Build final path
+        mov byte [rdi], 0
+
         lea rdx, [final_filepath]
         lea rdi, [parsed_filename]
         mov rsi, [filename_len]
-        call build_gallery_filepath
-        ; 3. Unlink (delete) the file
+        call build_final_filepath_with_ext
+
         mov rax, 87
         lea rdi, [final_filepath]
         syscall
         cmp rax, 0
         jl .handle_not_found
-        ; 4. Send 204 No Content response
+
         mov rax, 1
         mov rdi, [client_fd]
         lea rsi, [http_204_response]
@@ -921,36 +876,63 @@ _start:
         xor rdi, rdi
         syscall
 
-build_final_filepath:
-        push rdi
-        push rsi
-        mov rdi, rdx
+; Input: RDI=req buffer, RSI=len
+; Output: RAX=ptr to filename, RDX=len
+find_filename_from_url_no_ext:
+    push rdi
+    push rsi
+    push r12
+    lea rdx, [gallery_path_key] ; --- FIXED
+    mov rcx, gallery_path_key_len ; --- FIXED
+    call memmem
+    cmp rax, 0
+    je .url_filename_not_found
+    add rax, gallery_path_key_len ; --- FIXED
+    mov r12, rax
+    mov rdi, r12
+.find_space_loop:
+    cmp byte [rdi], ' '
+    je .found_space
+    inc rdi
+    jmp .find_space_loop
+.found_space:
+    mov rdx, rdi
+    sub rdx, r12
+    mov rax, r12
+    jmp .url_filename_done
+.url_filename_not_found:
+    xor rax, rax
+    xor rdx, rdx
+.url_filename_done:
+    pop r12
+    pop rsi
+    pop rdi
+    ret
 
-        lea rsi, [app_dir_prefix]
-        mov rcx, app_dir_prefix_len
-        rep movsb
+; Input: RDI=ptr to filename (no ext), RSI=len, RDX=dest buffer
+build_final_filepath_with_ext:
+    push rdi
+    push rsi
+    mov rdi, rdx
+    lea rsi, [app_dir_prefix]
+    mov rcx, app_dir_prefix_len
+    rep movsb
+    pop rcx
+    pop rsi
+    rep movsb
+    lea rsi, [final_filename_suffix]
+    mov rcx, final_suffix_len
+    rep movsb
+    mov byte [rdi], 0
+    ret
 
-        pop rcx
-        pop rsi
-        rep movsb
-
-        mov byte [rdi], 0
-        ret
-
-; --- Subroutine to determine the correct Content-Type header ---
-; This version uses a standard stack frame (rbp) for maximum stability.
-; Input: RDI = pointer to filename, RSI = length of filename
-; Output: RAX = pointer to content-type string, RDX = length of string
 determine_content_type:
-    push    rbp             ; 1. Create the stack frame
+    push    rbp
     mov     rbp, rsp
-
-    push    rdi             ; Save registers we will use
+    push    rdi
     push    rsi
     push    rcx
     push    rbx
-
-    ; Find the last '.' in the filename by scanning backwards
     mov     rax, rdi    
     add     rax, rsi    
     dec     rax     
@@ -961,11 +943,7 @@ determine_content_type:
     repne   scasb
     cld             
     jne     .set_default_content_type
-
-    ; A '.' was found. RDI points one byte BEFORE the '.'.
-    lea     rbx, [rdi + 2] ; RBX now points to the start of the extension
-
-    ; Check for .png
+    lea     rbx, [rdi + 2]
     cmp     byte [rbx], 'p'
     jne     .try_jpg
     cmp     byte [rbx+1], 'n'
@@ -973,7 +951,6 @@ determine_content_type:
     cmp     byte [rbx+2], 'g'
     jne     .try_jpg
     jmp     .set_png_type
-
 .try_jpg:
     cmp     byte [rbx], 'j'
     jne     .try_css
@@ -982,7 +959,6 @@ determine_content_type:
     cmp     byte [rbx+2], 'g'
     jne     .try_css
     jmp     .set_jpg_type
-    
 .try_css:
     cmp     byte [rbx], 'c'
     jne     .try_js
@@ -991,14 +967,12 @@ determine_content_type:
     cmp     byte [rbx+2], 's'
     jne     .try_js
     jmp     .set_css_type
-
 .try_js:
     cmp     byte [rbx], 'j'
     jne     .try_ico
     cmp     byte [rbx+1], 's'
     jne     .try_ico
     jmp     .set_js_type
-
 .try_ico:
     cmp     byte [rbx], 'i'
     jne     .try_jpeg
@@ -1007,51 +981,41 @@ determine_content_type:
     cmp     byte [rbx+2], 'o'
     jne     .try_jpeg
     jmp     .set_ico_type
-    
 .try_jpeg:
     cmp     dword [rbx], 'jpeg'
     je      .set_jpg_type
     jmp     .set_html_type
-
 .set_png_type:
     lea     rax, [content_type_png]
     mov     rdx, content_type_png_len
     jmp     .content_type_done
-
 .set_jpg_type:
     lea     rax, [content_type_jpg]
     mov     rdx, content_type_jpg_len
     jmp     .content_type_done
-
 .set_css_type:
     lea     rax, [content_type_css]
     mov     rdx, content_type_css_len
     jmp     .content_type_done
-
 .set_js_type:
     lea     rax, [content_type_js]
     mov     rdx, content_type_js_len
     jmp     .content_type_done
-
 .set_ico_type:
     lea     rax, [content_type_ico]
     mov     rdx, content_type_ico_len
     jmp     .content_type_done
-
 .set_html_type:
     lea     rax, [content_type_html]
     mov     rdx, content_type_html_len
     jmp     .content_type_done
-    
 .set_default_content_type:
     lea     rax, [content_type_bin]
     mov     rdx, content_type_bin_len
-
 .content_type_done:
     pop     rbx
     pop     rcx
     pop     rsi
     pop     rdi
-    
-    leave               ; 2. Destroy the stack frame (mov rsp, rbp; pop rbp)
-    ret                 ; 3. Return
+    leave
+    ret

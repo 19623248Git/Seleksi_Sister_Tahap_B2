@@ -3,51 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome Home</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts: Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
+    <title>Assembly Server Gallery</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-gray-900 text-gray-200">
+<body>
+    <header>
+        <h1>Image Gallery</h1>
+        <p>Served by a custom Assembly web server.</p>
+        <a href="/aboutus.html" class="button">About This Server</a>
+    </header>
 
-    <!-- Main container to center content -->
-    <div class="min-h-screen flex flex-col items-center justify-center p-6">
-
-        <!-- Content Box -->
-        <div class="bg-gray-800 p-10 rounded-xl shadow-2xl max-w-2xl text-center">
-            
-            <!-- Main Heading -->
-            <h1 class="text-4xl md:text-5xl font-bold text-white mb-4">
-                Welcome to the Assembly Web Server!
-            </h1>
-            
-            <!-- Subheading -->
-            <p class="text-lg text-gray-400 mb-8">
-                This page is being served by a homemade HTTP server written entirely in x86-64 Assembly.
-            </p>
-
-            <!-- Status Indicator -->
-            <div class="flex items-center justify-center space-x-3 bg-gray-700/50 rounded-full px-4 py-2">
-                <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                <span class="text-green-400 font-semibold">Server Status: Online</span>
-            </div>
-
+    <!-- Server Actions -->
+    <section class="actions-container">
+        <!-- POST Form -->
+        <div class="action-card">
+            <h3>Upload New Image (POST)</h3>
+            <form id="post-form">
+                <input type="file" id="post-file" class="input-field" accept=".png" required>
+                <button type="submit" class="button">Upload</button>
+            </form>
         </div>
 
-        <!-- Footer -->
-        <footer class="mt-12 text-gray-500 text-sm">
-            <p>Bandung, West Java &copy; 2025</p>
-        </footer>
+        <!-- PUT Form -->
+        <div class="action-card">
+            <h3>Update Existing Image (PUT)</h3>
+            <form id="put-form">
+                <input type="text" id="put-filename" class="input-field" placeholder="Filename to replace (e.g., a.png)" required>
+                <input type="file" id="put-file" class="input-field" required>
+                <button type="submit" class="button">Update</button>
+            </form>
+        </div>
 
-    </div>
+        <!-- DELETE Form -->
+        <div class="action-card">
+            <h3>Delete Image (DELETE)</h3>
+            <form id="delete-form">
+                <input type="text" id="delete-filename" class="input-field" placeholder="Filename to delete (e.g., b.png)" required>
+                <button type="submit" class="button button-delete">Delete</button>
+            </form>
+        </div>
+    </section>
 
+    <!-- Status Message -->
+    <div id="status-message"></div>
+
+    <main id="gallery-container"></main>
+    <script src="app.js"></script>
 </body>
 </html>

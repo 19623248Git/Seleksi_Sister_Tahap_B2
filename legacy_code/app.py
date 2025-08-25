@@ -31,7 +31,7 @@ def read_root():
 
 @app.post("/banking")
 def banking_op(req: BankingRequest):
-    c
+    amount_str = f"{req.amount:09.2f}"
     input_line = f"{req.account}{req.action}{amount_str}"
 
     INPUT_FILE.write_text(input_line)

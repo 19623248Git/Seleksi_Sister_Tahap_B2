@@ -37,6 +37,8 @@
        77 ACC-BALANCE           PIC 9(6)V99.
 
        77 TMP-BALANCE           PIC 9(6)V99.
+
+       77 TMP-IDR-BALANCE       PIC X(15).
        77 MATCH-FOUND           PIC X VALUE "N".
        77 UPDATED               PIC X VALUE "N".
 
@@ -99,7 +101,7 @@
            MOVE ACC-BALANCE TO TMP-BALANCE
            EVALUATE IN-ACTION
                WHEN "DEP"
-                   IF IN-AMOUNT < 0
+                   IF IN-AMOUNT < ZERO
                        MOVE "INVALID DEPOSIT VALUE" TO OUT-RECORD
                    ELSE
                        IF IN-AMOUNT >= 999999.99
@@ -117,16 +119,16 @@
                        END-IF
                    END-IF
                WHEN "WDR"
-                   IF IN-AMOUNT < 0
+                   IF IN-AMOUNT < ZERO
                        MOVE "INVALID WITHDRAWAL VALUE" TO OUT-RECORD
                    ELSE
                        IF IN-AMOUNT >= 999999.99
-                           MOVE 000000.00 TO IN-AMOUNT
+                           MOVE ZERO TO IN-AMOUNT
                            MOVE "CAPPED AT 000000.00" TO OUT-RECORD
                        ELSE
-    
-                           IF IN-AMOUNT - TMP-BALANCE < 000000.00
-                               MOVE 000000.00 TO TMP-BALANCE
+
+                           IF IN-AMOUNT - TMP-BALANCE < ZERO
+                               MOVE ZERO TO TMP-BALANCE
                                MOVE "CAPPED AT 000000.00" TO OUT-RECORD
                            ELSE
                                SUBTRACT IN-AMOUNT FROM TMP-BALANCE
@@ -163,6 +165,8 @@
 
            WRITE ACC-RECORD-RAW
            CLOSE ACC-FILE.
+       
+      *CONVERT-IDR.
 
        FINALIZE.
            IF UPDATED = "Y"

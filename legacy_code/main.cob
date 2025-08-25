@@ -25,7 +25,7 @@
        01 TMP-RECORD            PIC X(18).
 
        FD OUT-FILE.
-       01 OUT-RECORD            PIC X(29).
+       01 OUT-RECORD            PIC X(69).
 
        WORKING-STORAGE SECTION.
        77 IN-ACCOUNT            PIC 9(6).
@@ -39,6 +39,7 @@
        77 TMP-BALANCE           PIC 9(6)V99.
 
        77 TMP-IDR-BALANCE       PIC X(15).
+       77 TMP-IDR-BALANCE_NUM   PIC 9(15).
        77 MATCH-FOUND           PIC X VALUE "N".
        77 UPDATED               PIC X VALUE "N".
 
@@ -138,11 +139,18 @@
                    END-IF
                WHEN "BAL"
                    MOVE SPACES TO OUT-RECORD
-                   MOVE "BALANCE: " TO BALANCE-TEXT
+                   MOVE "BALANCE (RAI): " TO BALANCE-TEXT
                    MOVE TMP-BALANCE TO FORMATTED-AMOUNT
                    MOVE FORMATTED-AMOUNT TO BALANCE-ALPHA
                    STRING BALANCE-TEXT DELIMITED SIZE
                           BALANCE-ALPHA DELIMITED SIZE
+                          " | " DELIMITED BY SIZE
+                          INTO OUT-RECORD
+                   PERFORM CONVERT-IDR
+                   MOVE "BALANCE (IDR): " TO BALANCE-TEXT
+                   STRING OUT-RECORD DELIMITED BY "|"
+                          BALANCE-TEXT DELIMITED SIZE
+                          TMP-IDR-BALANCE DELIMITED SIZE
                           INTO OUT-RECORD
                WHEN OTHER
                    MOVE "UNKNOWN ACTION" TO OUT-RECORD
@@ -160,13 +168,18 @@
            OPEN EXTEND ACC-FILE
            MOVE IN-ACCOUNT TO ACC-RECORD-RAW(1:6)
            MOVE IN-ACTION  TO ACC-RECORD-RAW(7:3)
-           MOVE "000000v00" TO FORMATTED-AMOUNT
+           MOVE ZERO TO FORMATTED-AMOUNT
            MOVE FORMATTED-AMOUNT TO ACC-RECORD-RAW(10:9)
 
            WRITE ACC-RECORD-RAW
            CLOSE ACC-FILE.
        
-      *CONVERT-IDR.
+       CONVERT-IDR.
+           MOVE TMP-BALANCE TO FORMATTED-AMOUNT
+           MOVE FORMATTED-AMOUNT TO TMP-IDR-BALANCE_NUM    
+           MULTIPLY 16270 BY TMP-IDR-BALANCE_NUM
+           MULTIPLY 7358 BY TMP-IDR-BALANCE_NUM
+           MOVE TMP-IDR-BALANCE_NUM TO TMP-IDR-BALANCE.
 
        FINALIZE.
            IF UPDATED = "Y"

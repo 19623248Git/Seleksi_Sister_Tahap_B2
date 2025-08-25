@@ -25,7 +25,7 @@
        01 TMP-RECORD            PIC X(18).
 
        FD OUT-FILE.
-       01 OUT-RECORD            PIC X(18).
+       01 OUT-RECORD            PIC X(29).
 
        WORKING-STORAGE SECTION.
        77 IN-ACCOUNT            PIC 9(6).
@@ -139,5 +139,6 @@
                CALL "SYSTEM" USING "mv temp.txt accounts.txt"
            END-IF
            OPEN OUTPUT OUT-FILE
+           WRITE OUT-RECORD
            CLOSE OUT-FILE.
 

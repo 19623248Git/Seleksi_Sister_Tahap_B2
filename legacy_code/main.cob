@@ -99,11 +99,41 @@
            MOVE ACC-BALANCE TO TMP-BALANCE
            EVALUATE IN-ACTION
                WHEN "DEP"
-                   ADD IN-AMOUNT TO TMP-BALANCE
-                   MOVE "DEPOSITED MONEY" TO OUT-RECORD
+                   IF IN-AMOUNT < 0
+                       MOVE "INVALID DEPOSIT VALUE" TO OUT-RECORD
+                   ELSE
+                       IF IN-AMOUNT >= 999999.99
+                           MOVE 999999.99 TO IN-AMOUNT
+                           MOVE "CAPPED AT 999999.99" TO OUT-RECORD
+                       ELSE
+    
+                           IF IN-AMOUNT + TMP-BALANCE > 999999.99
+                               MOVE 999999.99 TO TMP-BALANCE
+                               MOVE "CAPPED AT 999999.99" TO OUT-RECORD
+                           ELSE
+                               ADD IN-AMOUNT TO TMP-BALANCE
+                               MOVE "DEPOSITED MONEY" TO OUT-RECORD
+                           END-IF
+                       END-IF
+                   END-IF
                WHEN "WDR"
-                   SUBTRACT IN-AMOUNT FROM TMP-BALANCE
-                   MOVE "WITHDREW MONEY" TO OUT-RECORD
+                   IF IN-AMOUNT < 0
+                       MOVE "INVALID WITHDRAWAL VALUE" TO OUT-RECORD
+                   ELSE
+                       IF IN-AMOUNT >= 999999.99
+                           MOVE 000000.00 TO IN-AMOUNT
+                           MOVE "CAPPED AT 000000.00" TO OUT-RECORD
+                       ELSE
+    
+                           IF IN-AMOUNT - TMP-BALANCE < 000000.00
+                               MOVE 000000.00 TO TMP-BALANCE
+                               MOVE "CAPPED AT 000000.00" TO OUT-RECORD
+                           ELSE
+                               SUBTRACT IN-AMOUNT FROM TMP-BALANCE
+                               MOVE "WITHDREW MONEY" TO OUT-RECORD
+                           END-IF
+                       END-IF
+                   END-IF
                WHEN "BAL"
                    MOVE SPACES TO OUT-RECORD
                    MOVE "BALANCE: " TO BALANCE-TEXT
@@ -128,7 +158,7 @@
            OPEN EXTEND ACC-FILE
            MOVE IN-ACCOUNT TO ACC-RECORD-RAW(1:6)
            MOVE IN-ACTION  TO ACC-RECORD-RAW(7:3)
-           MOVE IN-AMOUNT TO FORMATTED-AMOUNT
+           MOVE "000000v00" TO FORMATTED-AMOUNT
            MOVE FORMATTED-AMOUNT TO ACC-RECORD-RAW(10:9)
 
            WRITE ACC-RECORD-RAW

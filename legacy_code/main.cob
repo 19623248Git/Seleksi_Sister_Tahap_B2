@@ -106,12 +106,13 @@
                        MOVE "INVALID DEPOSIT VALUE" TO OUT-RECORD
                    ELSE
                        IF IN-AMOUNT >= 999999.99
-                           MOVE 999999.99 TO IN-AMOUNT
+                           MOVE 999999.99 TO TMP-BALANCE
                            MOVE "CAPPED AT 999999.99" TO OUT-RECORD
                        ELSE
     
                            IF IN-AMOUNT > (999999.99 - TMP-BALANCE) 
                                MOVE 999999.99 TO TMP-BALANCE
+                               DISPLAY "TMP-BALANCE: "TMP-BALANCE
                                MOVE "CAPPED AT 999999.99" TO OUT-RECORD
                            ELSE
                                ADD IN-AMOUNT TO TMP-BALANCE
@@ -124,7 +125,7 @@
                        MOVE "INVALID WITHDRAWAL VALUE" TO OUT-RECORD
                    ELSE
                        IF IN-AMOUNT >= 999999.99
-                           MOVE ZERO TO IN-AMOUNT
+                           MOVE ZERO TO TMP-BALANCE
                            MOVE "CAPPED AT 000000.00" TO OUT-RECORD
                        ELSE
 

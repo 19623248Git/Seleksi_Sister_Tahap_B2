@@ -109,7 +109,7 @@
                            MOVE "CAPPED AT 999999.99" TO OUT-RECORD
                        ELSE
     
-                           IF IN-AMOUNT + TMP-BALANCE > 999999.99
+                           IF IN-AMOUNT > (999999.99 - TMP-BALANCE) 
                                MOVE 999999.99 TO TMP-BALANCE
                                MOVE "CAPPED AT 999999.99" TO OUT-RECORD
                            ELSE
@@ -127,7 +127,7 @@
                            MOVE "CAPPED AT 000000.00" TO OUT-RECORD
                        ELSE
 
-                           IF IN-AMOUNT - TMP-BALANCE < ZERO
+                           IF TMP-BALANCE < IN-AMOUNT
                                MOVE ZERO TO TMP-BALANCE
                                MOVE "CAPPED AT 000000.00" TO OUT-RECORD
                            ELSE

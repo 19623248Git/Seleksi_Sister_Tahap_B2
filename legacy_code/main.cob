@@ -99,10 +99,10 @@
            MOVE ACC-BALANCE TO TMP-BALANCE
            EVALUATE IN-ACTION
                WHEN "DEP"
-                   SUBTRACT IN-AMOUNT FROM TMP-BALANCE
+                   ADD IN-AMOUNT TO TMP-BALANCE
                    MOVE "DEPOSITED MONEY" TO OUT-RECORD
                WHEN "WDR"
-                   ADD IN-AMOUNT TO TMP-BALANCE
+                   SUB IN-AMOUNT FROM TMP-BALANCE
                    MOVE "WITHDREW MONEY" TO OUT-RECORD
                WHEN "BAL"
                    MOVE SPACES TO OUT-RECORD

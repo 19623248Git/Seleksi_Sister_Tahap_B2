@@ -102,7 +102,7 @@
                    ADD IN-AMOUNT TO TMP-BALANCE
                    MOVE "DEPOSITED MONEY" TO OUT-RECORD
                WHEN "WDR"
-                   SUB IN-AMOUNT FROM TMP-BALANCE
+                   SUBTRACT IN-AMOUNT FROM TMP-BALANCE
                    MOVE "WITHDREW MONEY" TO OUT-RECORD
                WHEN "BAL"
                    MOVE SPACES TO OUT-RECORD

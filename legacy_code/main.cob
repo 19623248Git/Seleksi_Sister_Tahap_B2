@@ -11,6 +11,11 @@
                ORGANIZATION IS LINE SEQUENTIAL.
            SELECT OUT-FILE ASSIGN TO "output.txt"
                ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT INTS-FILE ASSIGN TO "interest.txt"
+               ORGANIZATION IS LINE SEQUENTIAL.
+
+           SELECT INTS-TEMP ASSIGN TO "int_temp.txt"
+               ORGANIZATION IS LINE SEQUENTIAL.
 
        DATA DIVISION.
        FILE SECTION.
@@ -24,10 +29,25 @@
        FD TMP-FILE.
        01 TMP-RECORD            PIC X(18).
 
+       FD INTS-FILE.
+       01 INTS-RECORD            PIC X(24).
+
+       FD INTS-TEMP.
+       01 ITEMP-RECORD       PIC X(24).
+
        FD OUT-FILE.
        01 OUT-RECORD            PIC X(69).
 
        WORKING-STORAGE SECTION.
+       
+       01 WS-UNIX-TIMESTAMP   PIC S9(18) COMP-5.
+       77 WS-ARGUMENT           PIC X(80).
+       77 TMP_TIMESTAMP         PIC X(18).
+       77 INT_NOW               PIC 9(18).
+       77 INT_THEN              PIC 9(18).
+       77 DIFF_TIME             PIC 9(18).
+       77 N_INT                 PIC 9(18).
+       77  I                   PIC 9(18). *> Loop counter for interest
        77 IN-ACCOUNT            PIC 9(6).
        77 IN-ACTION             PIC X(3).
        77 IN-AMOUNT             PIC 9(6)V99.
@@ -41,6 +61,7 @@
        77 TMP-IDR-BALANCE       PIC X(15).
        77 TMP-IDR-BALANCE_NUM   PIC 9(15).
        77 MATCH-FOUND           PIC X VALUE "N".
+       77 INT-FOUND             PIC X VALUE "N".
        77 UPDATED               PIC X VALUE "N".
 
        77 FORMATTED-AMOUNT      PIC 9(6).99.
@@ -51,11 +72,14 @@
        PROCEDURE DIVISION.
 
        MAIN.
+           ACCEPT WS-ARGUMENT FROM COMMAND-LINE
            PERFORM READ-INPUT
+           PERFORM PROCESS-INTERESTS
            PERFORM PROCESS-RECORDS
            IF MATCH-FOUND = "N"
                IF IN-ACTION = "NEW"
                    PERFORM APPEND-ACCOUNT
+                   PERFORM APPEND-INTEREST
                    MOVE "ACCOUNT CREATED" TO OUT-RECORD
                ELSE
                    MOVE "ACCOUNT NOT FOUND" TO OUT-RECORD
@@ -97,9 +121,55 @@
            CLOSE ACC-FILE
            CLOSE TMP-FILE.
 
+       PROCESS-INTERESTS.
+           OPEN INPUT INTS-FILE
+           OPEN OUTPUT INTS-TEMP
+           PERFORM UNTIL INT-FOUND = "Y"
+               READ INTS-FILE
+                   AT END
+                       EXIT PERFORM
+                   NOT AT END
+                       MOVE INTS-RECORD(1:6) TO ACC-ACCOUNT
+                       MOVE INTS-RECORD(7:18) TO INT_THEN
+                       IF ACC-ACCOUNT = IN-ACCOUNT
+                           MOVE "Y" TO INT-FOUND
+                           DISPLAY INT-FOUND
+                           PERFORM APPLY-INTEREST
+                       ELSE
+                           WRITE ITEMP-RECORD FROM INTS-RECORD
+                       END-IF
+           END-PERFORM
+           CLOSE INTS-FILE
+           CLOSE INTS-TEMP.
+
+       APPLY-INTEREST.
+           CALL "time" RETURNING WS-UNIX-TIMESTAMP
+           MOVE WS-UNIX-TIMESTAMP TO TMP_TIMESTAMP
+           DISPLAY "TIMESTAMP: " TMP_TIMESTAMP
+           MOVE TMP_TIMESTAMP TO INT_NOW
+           COMPUTE DIFF_TIME = INT_NOW - INT_THEN
+           DISPLAY "TIME THEN: " INT_THEN
+           DISPLAY "DIFFERENCE TIME: " DIFF_TIME
+           COMPUTE N_INT = DIFF_TIME / 23
+           MOVE IN-ACCOUNT TO ITEMP-RECORD(1:6)
+           MOVE INT_NOW TO ITEMP-RECORD(7:18)
+           WRITE ITEMP-RECORD.
 
        APPLY-ACTION.
            MOVE ACC-BALANCE TO TMP-BALANCE
+           IF WS-ARGUMENT = "--apply-interest"
+               IF INT-FOUND = "Y"
+                   DISPLAY "BEFORE INTEREST: "
+                       TMP-BALANCE
+                   PERFORM VARYING I FROM 1 BY 1 UNTIL I > N_INT
+                       COMPUTE TMP-BALANCE = TMP-BALANCE * 1.0005
+                   END-PERFORM
+                   DISPLAY "AFTER INTEREST: "
+                       TMP-BALANCE  
+               ELSE
+                   DISPLAY "NO INTEREST RECORD"
+              END-IF
+           END-IF
            EVALUATE IN-ACTION
                WHEN "DEP"
                    IF IN-AMOUNT < ZERO
@@ -174,7 +244,19 @@
 
            WRITE ACC-RECORD-RAW
            CLOSE ACC-FILE.
-       
+
+       APPEND-INTEREST.
+           OPEN EXTEND INTS-FILE
+           CALL "time" RETURNING WS-UNIX-TIMESTAMP
+           MOVE WS-UNIX-TIMESTAMP TO TMP_TIMESTAMP
+           DISPLAY "TIMESTAMP: " TMP_TIMESTAMP
+           MOVE TMP_TIMESTAMP TO INT_NOW
+           MOVE IN-ACCOUNT TO ITEMP-RECORD(1:6)
+           MOVE INT_NOW TO ITEMP-RECORD(7:18)
+
+           WRITE ITEMP-RECORD
+           CLOSE INTS-FILE.
+
        CONVERT-IDR.
            MOVE TMP-BALANCE TO FORMATTED-AMOUNT
            MOVE FORMATTED-AMOUNT TO TMP-IDR-BALANCE_NUM    
@@ -185,6 +267,9 @@
        FINALIZE.
            IF UPDATED = "Y"
                CALL "SYSTEM" USING "mv temp.txt accounts.txt"
+           END-IF
+           IF INT-FOUND = "Y"
+               CALL "SYSTEM" USING "mv int_temp.txt interest.txt"
            END-IF
            OPEN OUTPUT OUT-FILE
            WRITE OUT-RECORD

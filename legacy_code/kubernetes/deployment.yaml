@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cobol-app-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cobol-app
+  template:
+    metadata:
+      labels:
+        app: cobol-app
+    spec:
+      containers:
+      - name: cobol-app-container
+        image: tstrunacr.azurecr.io/cobol-app:v1
+        ports:
+        - containerPort: 8000

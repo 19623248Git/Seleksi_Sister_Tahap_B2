@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cobol-app-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: cobol-app
+  ports:
+  - protocol: TCP
+    port: 5000 # public port to connect.
+    targetPort: 8000 # internal port container.

@@ -223,8 +223,6 @@
                           BALANCE-TEXT DELIMITED SIZE
                           TMP-IDR-BALANCE DELIMITED SIZE
                           INTO OUT-RECORD
-               WHEN OTHER
-                   MOVE "UNKNOWN ACTION" TO OUT-RECORD
            END-EVALUATE
 
            MOVE IN-ACCOUNT TO TMP-RECORD(1:6)

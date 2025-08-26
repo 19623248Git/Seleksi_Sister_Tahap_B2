@@ -63,6 +63,7 @@
        77 MATCH-FOUND           PIC X VALUE "N".
        77 INT-FOUND             PIC X VALUE "N".
        77 UPDATED               PIC X VALUE "N".
+       77 INT-UPDATED           PIC X VALUE "N".
 
        77 FORMATTED-AMOUNT      PIC 9(6).99.
        77 BALANCE-TEXT          PIC X(20).
@@ -75,11 +76,14 @@
            ACCEPT WS-ARGUMENT FROM COMMAND-LINE
            PERFORM READ-INPUT
            PERFORM PROCESS-INTERESTS
+           IF WS-ARGUMENT = "--apply-interest"
+               AND INT-FOUND = "N"
+               PERFORM APPEND-INTEREST
+           END-IF
            PERFORM PROCESS-RECORDS
            IF MATCH-FOUND = "N"
                IF IN-ACTION = "NEW"
                    PERFORM APPEND-ACCOUNT
-                   PERFORM APPEND-INTEREST
                    MOVE "ACCOUNT CREATED" TO OUT-RECORD
                ELSE
                    MOVE "ACCOUNT NOT FOUND" TO OUT-RECORD
@@ -154,21 +158,20 @@
            MOVE IN-ACCOUNT TO ITEMP-RECORD(1:6)
            MOVE INT_NOW TO ITEMP-RECORD(7:18)
            WRITE ITEMP-RECORD.
+           MOVE "Y" TO INT-UPDATED.
 
        APPLY-ACTION.
            MOVE ACC-BALANCE TO TMP-BALANCE
-           IF WS-ARGUMENT = "--apply-interest"
-               IF INT-FOUND = "Y"
-                   DISPLAY "BEFORE INTEREST: "
-                       TMP-BALANCE
-                   PERFORM VARYING I FROM 1 BY 1 UNTIL I > N_INT
-                       COMPUTE TMP-BALANCE = TMP-BALANCE * 1.0005
-                   END-PERFORM
-                   DISPLAY "AFTER INTEREST: "
-                       TMP-BALANCE  
-               ELSE
-                   DISPLAY "NO INTEREST RECORD"
-              END-IF
+           IF INT-FOUND = "Y"
+               DISPLAY "BEFORE INTEREST: "
+                   TMP-BALANCE
+               PERFORM VARYING I FROM 1 BY 1 UNTIL I > N_INT
+                   COMPUTE TMP-BALANCE = TMP-BALANCE * 1.0005
+               END-PERFORM
+               DISPLAY "AFTER INTEREST: "
+                   TMP-BALANCE  
+           ELSE
+               DISPLAY "NO INTEREST RECORD"
            END-IF
            EVALUATE IN-ACTION
                WHEN "DEP"
@@ -244,7 +247,7 @@
            CLOSE ACC-FILE.
 
        APPEND-INTEREST.
-           OPEN EXTEND INTS-FILE
+           OPEN EXTEND INTS-TEMP
            CALL "time" RETURNING WS-UNIX-TIMESTAMP
            MOVE WS-UNIX-TIMESTAMP TO TMP_TIMESTAMP
            DISPLAY "TIMESTAMP: " TMP_TIMESTAMP
@@ -253,7 +256,8 @@
            MOVE INT_NOW TO ITEMP-RECORD(7:18)
 
            WRITE ITEMP-RECORD
-           CLOSE INTS-FILE.
+           CLOSE INTS-TEMP
+           MOVE "Y" TO INT-UPDATED.
 
        CONVERT-IDR.
            MOVE TMP-BALANCE TO FORMATTED-AMOUNT
@@ -266,8 +270,14 @@
            IF UPDATED = "Y"
                CALL "SYSTEM" USING "mv temp.txt accounts.txt"
            END-IF
-           IF INT-FOUND = "Y"
+           IF UPDATED = "N"
+               CALL "SYSTEM" USING "rm temp.txt"
+           END-IF  
+           IF INT-UPDATED = "Y"
                CALL "SYSTEM" USING "mv int_temp.txt interest.txt"
+           END-IF
+           IF INT-UPDATED = "N"
+               CALL "SYSTEM" USING "rm int_temp.txt"
            END-IF
            OPEN OUTPUT OUT-FILE
            WRITE OUT-RECORD

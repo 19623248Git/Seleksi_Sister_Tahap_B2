@@ -2,7 +2,7 @@ import uvicorn
 import argparse
 import requests
 from typing import Set, List
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, status
 from pydantic import BaseModel
 
 from Blockchain import Blockchain
@@ -43,7 +43,7 @@ async def new_transaction(transaction_data: TransactionModel, broadcast: bool = 
     if broadcast:
         for peer in peers:
             try:
-                requests.post(f"{peer}/transactions?broadcast=false", json=transaction_data.model_dump())
+                requests.post(f"{peer}/transactions?broadcast=false", json=transaction_data.model_dump(), timeout=5)
             except requests.exceptions.RequestException as e:
                 print(f"Failed to broadcast transaction to peer {peer}: {e}")
         return {"message": f"Transaction {new_tx.id} added and broadcast to peers."}
@@ -65,7 +65,7 @@ async def mine():
     
     for peer in peers:
         try:
-            requests.post(f"{peer}/add-block", json=mined_block.to_dict())
+            requests.post(f"{peer}/add-block", json=mined_block.to_dict(), timeout=5)
         except requests.exceptions.RequestException as e:
             print(f"Could not broadcast block to peer {peer}: {e}")
     
@@ -80,27 +80,54 @@ async def add_block(block_data: dict = Body(...)):
         index=block_data['index'],
         data=block_data['data'],
         previous_hash=block_data['previous_hash'],
-        merkle_root=block_data['merkle_root']
+        merkle_root=block_data['merkle_root'],
+        timestamp=block_data['timestamp'],
+        nonce=block_data['nonce']
     )
-    block.timestamp = block_data['timestamp']
-    block.nonce = block_data['nonce']
     block.hash = block_data['hash']
 
-    # If the block is invalid, it's a sign of a potential fork.
-    # The node should resolve conflicts to find the correct chain.
     if not blockchain.add_block(block):
-        # Trigger conflict resolution if the block is rejected
-        await resolve_conflicts()
-        raise HTTPException(status_code=400, detail="Invalid block received. Conflict resolution triggered.")
+        replaced = await resolve_conflicts()
+        
+        if replaced['message'] == "Our chain was replaced by a longer, valid chain.":
+             detail_message = "Invalid block. Chain was out of sync and has been replaced."
+        else:
+             detail_message = "Invalid block. Chain is authoritative but block was still rejected."
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, 
+            detail=detail_message
+        )
     
     return {"message": "New block added to the chain."}
+
+@app.post("/add-false-block")
+async def add_false_block():
+    """
+    Creates a block with an invalid previous_hash and broadcasts it.
+    This is for testing purposes only.
+    """
+    last_block = blockchain.last_block
+    
+    false_block = Block(
+        index=last_block.index + 1,
+        data=[{"sender": "test", "recipient": "test", "amount": 0}],
+        previous_hash="THIS_IS_A_FALSE_HASH", # Intentionally incorrect
+        merkle_root=""
+    )
+    
+    print("Broadcasting an intentionally false block...")
+    for peer in peers:
+        try:
+            requests.post(f"{peer}/add-block", json=false_block.to_dict(), timeout=5)
+        except requests.exceptions.RequestException as e:
+            print(f"Could not broadcast false block to peer {peer}: {e}")
+            
+    return {"message": "False block broadcast to network.", "block": false_block.to_dict()}
 
 
 @app.get("/resolve")
 async def resolve_conflicts():
-    """
-    Triggers the consensus algorithm to resolve any chain conflicts.
-    """
     replaced = await blockchain.resolve_conflicts(peers)
     if replaced:
         message = "Our chain was replaced by a longer, valid chain."
@@ -130,7 +157,7 @@ async def register_node(payload: NodesModel, broadcast: bool = True):
         for peer in list(peers):
             if peer not in newly_added_nodes:
                 try:
-                    requests.post(f"{peer}/register-node?broadcast=false", json={"nodes": newly_added_nodes})
+                    requests.post(f"{peer}/register-node?broadcast=false", json={"nodes": newly_added_nodes}, timeout=5)
                 except requests.exceptions.RequestException as e:
                     print(f"Failed to broadcast to peer {peer}: {e}")
 
@@ -156,7 +183,7 @@ if __name__ == '__main__':
     if args.bootstrap_node:
         print(f"Registering with bootstrap node: {args.bootstrap_node}")
         try:
-            response = requests.post(f"{args.bootstrap_node}/register-node", json={"nodes": [host_url]})
+            response = requests.post(f"{args.bootstrap_node}/register-node", json={"nodes": [host_url]}, timeout=5)
             
             if response.status_code == 200:
                 all_peers = response.json().get("all_peers", [])

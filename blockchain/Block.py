@@ -3,13 +3,13 @@ import json
 from datetime import datetime
 
 class Block:
-    def __init__(self, index, data, previous_hash, merkle_root):
+    def __init__(self, index, data, previous_hash, merkle_root, timestamp=None, nonce=0):
         self.index = index
-        self.timestamp = str(datetime.now())
+        self.timestamp = timestamp or str(datetime.now())
         self.data = data
         self.previous_hash = previous_hash
         self.merkle_root = merkle_root
-        self.nonce = 0
+        self.nonce = nonce
         self.hash = self.calculate_hash()
 
     def calculate_hash(self):

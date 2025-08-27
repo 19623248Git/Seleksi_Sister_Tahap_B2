@@ -42,7 +42,7 @@ async def new_transaction(transaction_data: TransactionModel, broadcast: bool = 
     if broadcast:
         for peer in peers:
             try:
-                requests.post(f"{peer}/transactions?broadcast=false", json=transaction_data.dict())
+                requests.post(f"{peer}/transactions?broadcast=false", json=transaction_data.model_dump())
             except requests.exceptions.RequestException as e:
                 print(f"Failed to broadcast transaction to peer {peer}: {e}")
         return {"message": f"Transaction {new_tx.id} added and broadcast to peers."}

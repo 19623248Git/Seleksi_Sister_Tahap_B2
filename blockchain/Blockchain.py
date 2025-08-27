@@ -1,7 +1,8 @@
+import requests
 from Block import Block
 from Transaction import Transaction
 from MerkleTree import MerkleTree
-from typing import List, Optional
+from typing import List, Optional, Set
 
 class Blockchain:
     def __init__(self):
@@ -10,9 +11,6 @@ class Blockchain:
         self.create_genesis_block()
 
     def create_genesis_block(self):
-        """
-        Creates the very first block and runs Proof-of-Work on it.
-        """
         genesis_block = Block(
             index=0, 
             previous_hash="0", 
@@ -23,11 +21,6 @@ class Blockchain:
         self.chain.append(genesis_block)
 
     def proof_of_work(self, block: Block):
-        """
-        Finds a hash that satisfies the difficulty requirement, which increases
-        as the chain grows.
-        """
-        # Difficulty increases by 1 for every 3 blocks
         difficulty = 1 + len(self.chain) // 3
         difficulty_target = '0' * difficulty
         
@@ -45,10 +38,30 @@ class Blockchain:
         self.mempool.append(transaction)
         print(f"Transaction added to mempool: {transaction.id}")
 
+    def add_block(self, block: Block) -> bool:
+        if block.previous_hash != self.last_block.hash:
+            print("Validation Failed: Previous hash does not match.")
+            return False
+        
+        if block.hash != block.calculate_hash():
+            print("Validation Failed: Block hash is incorrect.")
+            return False
+            
+        difficulty = 1 + len(self.chain) // 3
+        difficulty_target = '0' * difficulty
+        if not block.hash.startswith(difficulty_target):
+            print("Validation Failed: Proof-of-Work is not satisfied.")
+            return False
+
+        self.chain.append(block)
+        
+        mined_tx_ids = {tx['id'] for tx in block.data}
+        self.mempool = [tx for tx in self.mempool if tx.id not in mined_tx_ids]
+
+        print(f"Block {block.index} from peer added. Mempool updated.")
+        return True
+
     def mine_block(self) -> Optional[Block]:
-        """
-        Mines a new block by performing Proof-of-Work.
-        """
         if not self.mempool:
             print("Mempool is empty. No block mined.")
             return None 
@@ -66,7 +79,6 @@ class Blockchain:
             merkle_root=merkle_root
         )
         
-        # Run the Proof-of-Work algorithm to find a valid hash
         self.proof_of_work(new_block)
         
         self.chain.append(new_block)
@@ -75,6 +87,69 @@ class Blockchain:
         self.mempool = []
         
         return new_block
+
+    @staticmethod
+    def is_chain_valid(chain: List[dict]) -> bool:
+        if not chain: return False
+        
+        genesis_block_data = chain[0]
+        if genesis_block_data['index'] != 0 or genesis_block_data['previous_hash'] != "0":
+            return False
+
+        for i in range(1, len(chain)):
+            current_block_data = chain[i]
+            previous_block_data = chain[i - 1]
+
+            if current_block_data['previous_hash'] != previous_block_data['hash']:
+                return False
+
+            # Recreate block to validate its hash
+            block_to_validate = Block(
+                index=current_block_data['index'], data=current_block_data['data'],
+                previous_hash=current_block_data['previous_hash'], merkle_root=current_block_data['merkle_root']
+            )
+            block_to_validate.timestamp = current_block_data['timestamp']
+            block_to_validate.nonce = current_block_data['nonce']
+            
+            if block_to_validate.calculate_hash() != current_block_data['hash']:
+                return False
+        
+        return True
+
+    async def resolve_conflicts(self, peers: Set[str]) -> bool:
+        new_chain = None
+        max_length = len(self.chain)
+
+        for node in peers:
+            try:
+                response = requests.get(f'{node}/chain')
+                if response.status_code == 200:
+                    length = response.json()['length']
+                    chain_data = response.json()['chain']
+
+                    if length > max_length and self.is_chain_valid(chain_data):
+                        max_length = length
+                        new_chain = chain_data
+            except requests.exceptions.RequestException as e:
+                print(f"Could not fetch chain from peer {node}: {e}")
+
+        if new_chain:
+            reconstructed_chain = []
+            for block_data in new_chain:
+                block = Block(
+                    index=block_data['index'], data=block_data['data'],
+                    previous_hash=block_data['previous_hash'], merkle_root=block_data['merkle_root']
+                )
+                block.timestamp = block_data['timestamp']
+                block.nonce = block_data['nonce']
+                block.hash = block_data['hash']
+                reconstructed_chain.append(block)
+
+            self.chain = reconstructed_chain
+            self.mempool = []
+            return True
+
+        return False
 
     def to_dict(self):
         return {

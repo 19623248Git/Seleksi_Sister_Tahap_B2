@@ -2,11 +2,12 @@ import uvicorn
 import argparse
 import requests
 from typing import Set, List
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
 
 from Blockchain import Blockchain
 from Transaction import Transaction
+from Block import Block
 
 class TransactionModel(BaseModel):
     sender: str
@@ -51,7 +52,6 @@ async def new_transaction(transaction_data: TransactionModel, broadcast: bool = 
 
 @app.get("/transactions")
 async def get_transactions():
-    """Returns all transactions currently in the mempool."""
     return {
         "transactions": [tx.to_dict() for tx in blockchain.mempool],
         "count": len(blockchain.mempool)
@@ -63,10 +63,55 @@ async def mine():
     if not mined_block:
         raise HTTPException(status_code=400, detail="Mempool is empty, no block to mine.")
     
+    for peer in peers:
+        try:
+            requests.post(f"{peer}/add-block", json=mined_block.to_dict())
+        except requests.exceptions.RequestException as e:
+            print(f"Could not broadcast block to peer {peer}: {e}")
+    
     return {
-        "message": "New block forged (local only)",
+        "message": "New block forged and broadcast",
         "block": mined_block.to_dict()
     }
+
+@app.post("/add-block")
+async def add_block(block_data: dict = Body(...)):
+    block = Block(
+        index=block_data['index'],
+        data=block_data['data'],
+        previous_hash=block_data['previous_hash'],
+        merkle_root=block_data['merkle_root']
+    )
+    block.timestamp = block_data['timestamp']
+    block.nonce = block_data['nonce']
+    block.hash = block_data['hash']
+
+    # If the block is invalid, it's a sign of a potential fork.
+    # The node should resolve conflicts to find the correct chain.
+    if not blockchain.add_block(block):
+        # Trigger conflict resolution if the block is rejected
+        await resolve_conflicts()
+        raise HTTPException(status_code=400, detail="Invalid block received. Conflict resolution triggered.")
+    
+    return {"message": "New block added to the chain."}
+
+
+@app.get("/resolve")
+async def resolve_conflicts():
+    """
+    Triggers the consensus algorithm to resolve any chain conflicts.
+    """
+    replaced = await blockchain.resolve_conflicts(peers)
+    if replaced:
+        message = "Our chain was replaced by a longer, valid chain."
+    else:
+        message = "Our chain is authoritative."
+
+    return {
+        "message": message,
+        "chain": blockchain.to_dict()['chain']
+    }
+
 
 @app.post("/register-node")
 async def register_node(payload: NodesModel, broadcast: bool = True):

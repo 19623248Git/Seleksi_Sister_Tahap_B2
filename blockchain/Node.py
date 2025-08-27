@@ -28,14 +28,34 @@ async def get_chain():
     return blockchain.to_dict()
 
 @app.post("/transactions")
-async def new_transaction(transaction_data: TransactionModel):
+async def new_transaction(transaction_data: TransactionModel, broadcast: bool = True):
+    if not transaction_data.sender or not transaction_data.recipient:
+        raise HTTPException(status_code=400, detail="Transactions must include a sender and recipient.")
+        
     new_tx = Transaction(
         sender=transaction_data.sender,
         recipient=transaction_data.recipient,
         amount=transaction_data.amount
     )
     blockchain.add_transaction(new_tx)
-    return {"message": f"Transaction {new_tx.id} added to local mempool."}
+
+    if broadcast:
+        for peer in peers:
+            try:
+                requests.post(f"{peer}/transactions?broadcast=false", json=transaction_data.dict())
+            except requests.exceptions.RequestException as e:
+                print(f"Failed to broadcast transaction to peer {peer}: {e}")
+        return {"message": f"Transaction {new_tx.id} added and broadcast to peers."}
+
+    return {"message": f"Transaction {new_tx.id} added from a broadcast."}
+
+@app.get("/transactions")
+async def get_transactions():
+    """Returns all transactions currently in the mempool."""
+    return {
+        "transactions": [tx.to_dict() for tx in blockchain.mempool],
+        "count": len(blockchain.mempool)
+    }
 
 @app.get("/mine")
 async def mine():

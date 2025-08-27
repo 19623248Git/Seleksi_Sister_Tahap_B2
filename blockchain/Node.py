@@ -74,6 +74,20 @@ async def mine():
         "block": mined_block.to_dict()
     }
 
+@app.post("/mine-no-broadcast")
+async def mine_no_broadcast():
+    """
+    Mines a block but does not broadcast it. For testing race conditions.
+    """
+    mined_block = blockchain.mine_block()
+    if not mined_block:
+        raise HTTPException(status_code=400, detail="Mempool is empty, no block to mine.")
+    
+    return {
+        "message": "New block forged locally (not broadcast).",
+        "block": mined_block.to_dict()
+    }
+
 @app.post("/add-block")
 async def add_block(block_data: dict = Body(...)):
     block = Block(
@@ -103,16 +117,12 @@ async def add_block(block_data: dict = Body(...)):
 
 @app.post("/add-false-block")
 async def add_false_block():
-    """
-    Creates a block with an invalid previous_hash and broadcasts it.
-    This is for testing purposes only.
-    """
     last_block = blockchain.last_block
     
     false_block = Block(
         index=last_block.index + 1,
         data=[{"sender": "test", "recipient": "test", "amount": 0}],
-        previous_hash="THIS_IS_A_FALSE_HASH", # Intentionally incorrect
+        previous_hash="THIS_IS_A_FALSE_HASH",
         merkle_root=""
     )
     

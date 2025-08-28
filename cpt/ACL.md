@@ -6,6 +6,10 @@
 ```
 Router(config)#ip access-list extended gov_in
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit tcp any 192.168.2.0 0.0.0.255 established
+Router(config-ext-nacl)#permit icmp any 192.168.2.0 0.0.0.255 echo-reply
+Router(config-ext-nacl)#permit udp any eq 53 192.168.2.0 0.0.0.255
+Router(config-ext-nacl)#permit udp any eq 67 192.168.2.0 0.0.0.255 eq 68
 Router(config-ext-nacl)#permit ip 192.168.4.0 0.0.0.255 192.168.2.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.6.0 0.0.0.255 192.168.2.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.10.0 0.0.0.255 192.168.2.0 0.0.0.255
@@ -13,6 +17,10 @@ Router(config-ext-nacl)#permit ip 192.168.14.0 0.0.0.255 192.168.2.0 0.0.0.255
 Router(config-ext-nacl)#exit
 Router(config)#ip access-list extended gov_out
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit udp 192.168.2.0 0.0.0.255 any eq 53
+Router(config-ext-nacl)#permit udp 192.168.2.0 0.0.0.255 any eq 67
+Router(config-ext-nacl)#permit tcp 192.168.2.0 0.0.0.255 any eq 443
+Router(config-ext-nacl)#permit icmp 192.168.2.0 0.0.0.255 any echo
 Router(config-ext-nacl)#permit ip 192.168.2.0 0.0.0.255 192.168.4.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.2.0 0.0.0.255 192.168.6.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.2.0 0.0.0.255 192.168.10.0 0.0.0.255
@@ -53,6 +61,10 @@ Router(config-if)#ip access-group ent_out out
 ```
 Router(config)#ip access-list extended gov_in
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit tcp any 192.168.6.0 0.0.0.255 established
+Router(config-ext-nacl)#permit icmp any 192.168.6.0 0.0.0.255 echo-reply
+Router(config-ext-nacl)#permit udp any eq 53 192.168.6.0 0.0.0.255
+Router(config-ext-nacl)#permit udp any eq 67 192.168.6.0 0.0.0.255 eq 68
 Router(config-ext-nacl)#permit ip 192.168.8.0 0.0.0.255 192.168.6.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.2.0 0.0.0.255 192.168.6.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.10.0 0.0.0.255 192.168.6.0 0.0.0.255
@@ -60,6 +72,10 @@ Router(config-ext-nacl)#permit ip 192.168.14.0 0.0.0.255 192.168.6.0 0.0.0.255
 Router(config-ext-nacl)#exit
 Router(config)#ip access-list extended gov_out
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit udp 192.168.6.0 0.0.0.255 any eq 53
+Router(config-ext-nacl)#permit udp 192.168.6.0 0.0.0.255 any eq 67
+Router(config-ext-nacl)#permit tcp 192.168.6.0 0.0.0.255 any eq 443
+Router(config-ext-nacl)#permit icmp 192.168.6.0 0.0.0.255 any echo
 Router(config-ext-nacl)#permit ip 192.168.6.0 0.0.0.255 192.168.8.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.6.0 0.0.0.255 192.168.2.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.6.0 0.0.0.255 192.168.10.0 0.0.0.255
@@ -99,6 +115,10 @@ Router(config-if)# ip access-group ent_out out
 ```
 Router(config)#ip access-list extended gov_in
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit tcp any 192.168.10.0 0.0.0.255 established
+Router(config-ext-nacl)#permit icmp any 192.168.10.0 0.0.0.255 echo-reply
+Router(config-ext-nacl)#permit udp any eq 53 192.168.10.0 0.0.0.255
+Router(config-ext-nacl)#permit udp any eq 67 192.168.10.0 0.0.0.255 eq 68
 Router(config-ext-nacl)#permit ip 192.168.12.0 0.0.0.255 192.168.10.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.2.0 0.0.0.255 192.168.10.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.6.0 0.0.0.255 192.168.10.0 0.0.0.255
@@ -106,6 +126,10 @@ Router(config-ext-nacl)#permit ip 192.168.14.0 0.0.0.255 192.168.10.0 0.0.0.255
 Router(config-ext-nacl)#exit
 Router(config)#ip access-list extended gov_out
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit udp 192.168.10.0 0.0.0.255 any eq 53
+Router(config-ext-nacl)#permit udp 192.168.10.0 0.0.0.255 any eq 67
+Router(config-ext-nacl)#permit tcp 192.168.10.0 0.0.0.255 any eq 443
+Router(config-ext-nacl)#permit icmp 192.168.10.0 0.0.0.255 any echo
 Router(config-ext-nacl)#permit ip 192.168.10.0 0.0.0.255 192.168.12.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.10.0 0.0.0.255 192.168.2.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.10.0 0.0.0.255 192.168.6.0 0.0.0.255
@@ -145,6 +169,10 @@ Router(config-if)# ip access-group ent_out out
 ```
 Router(config)#ip access-list extended gov_in
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit tcp any 192.168.14.0 0.0.0.255 established
+Router(config-ext-nacl)#permit icmp any 192.168.14.0 0.0.0.255 echo-reply
+Router(config-ext-nacl)#permit udp any eq 53 192.168.14.0 0.0.0.255
+Router(config-ext-nacl)#permit udp any eq 67 192.168.14.0 0.0.0.255 eq 68
 Router(config-ext-nacl)#permit ip 192.168.16.0 0.0.0.255 192.168.14.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.2.0 0.0.0.255 192.168.14.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.6.0 0.0.0.255 192.168.14.0 0.0.0.255
@@ -152,6 +180,10 @@ Router(config-ext-nacl)#permit ip 192.168.10.0 0.0.0.255 192.168.14.0 0.0.0.255
 Router(config-ext-nacl)#exit
 Router(config)#ip access-list extended gov_out
 Router(config-ext-nacl)#permit ospf any any
+Router(config-ext-nacl)#permit udp 192.168.14.0 0.0.0.255 any eq 53
+Router(config-ext-nacl)#permit udp 192.168.14.0 0.0.0.255 any eq 67
+Router(config-ext-nacl)#permit tcp 192.168.14.0 0.0.0.255 any eq 443
+Router(config-ext-nacl)#permit icmp 192.168.14.0 0.0.0.255 any echo
 Router(config-ext-nacl)#permit ip 192.168.14.0 0.0.0.255 192.168.16.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.14.0 0.0.0.255 192.168.2.0 0.0.0.255
 Router(config-ext-nacl)#permit ip 192.168.14.0 0.0.0.255 192.168.6.0 0.0.0.255

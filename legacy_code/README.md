@@ -12,7 +12,7 @@ Rules:
 How to test:
 ```bash
 docker build -t cobol-app .
-docker run --rm -p 8000:8000 cobol-app
+docker run -p 8000:8000 -e COBOL_ARGS="--apply-interest" cobol-app
 ```
 
 Working Deployed Application with HTTPS: https://scobol.ddns.net/

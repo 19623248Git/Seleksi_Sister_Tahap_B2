@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -8,11 +8,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
 
-COPY app.py index.html main.cob accounts.txt interest.txt ./
+COPY main.cob ./
+RUN cobc -x -o main.bin main.cob
 
-RUN cobc -x -o main main.cob
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+RUN useradd --create-home appuser
+
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/*
+
+COPY --from=builder /workspace/main.bin ./
+COPY app.py index.html accounts.txt interest.txt ./
+
+# Install runtime library and Create wrapper script
+RUN apt-get update && \
+    # Install GnuCOBOL for main.bin
+    apt-get install -y --no-install-recommends libcob4 && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Create "main" wrapper script that the Python app will execute
+    echo '#!/bin/sh' > main && \
+    echo 'exec /workspace/main.bin ${COBOL_ARGS}' >> main && \
+    # Make the wrapper script executable
+    chmod +x main && \
+    # Give the non-root user ownership of all application files
+    chown -R appuser:appuser /workspace
+
+USER appuser
 
 EXPOSE 8000
 

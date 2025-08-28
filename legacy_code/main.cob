@@ -47,7 +47,7 @@
        77 INT_THEN              PIC 9(18).
        77 DIFF_TIME             PIC 9(18).
        77 N_INT                 PIC 9(18).
-       77  I                   PIC 9(18). *> Loop counter for interest
+       77  I                   PIC 9(18).
        77 IN-ACCOUNT            PIC 9(6).
        77 IN-ACTION             PIC X(3).
        77 IN-AMOUNT             PIC 9(6)V99.
@@ -107,7 +107,7 @@
        PROCESS-RECORDS.
            OPEN INPUT ACC-FILE
            OPEN OUTPUT TMP-FILE
-           PERFORM UNTIL MATCH-FOUND = "Y"
+           PERFORM WITH TEST AFTER UNTIL 0 = 1
                READ ACC-FILE
                    AT END
                        EXIT PERFORM
@@ -128,7 +128,7 @@
        PROCESS-INTERESTS.
            OPEN INPUT INTS-FILE
            OPEN OUTPUT INTS-TEMP
-           PERFORM UNTIL INT-FOUND = "Y"
+           PERFORM WITH TEST AFTER UNTIL 0 = 1
                READ INTS-FILE
                    AT END
                        EXIT PERFORM

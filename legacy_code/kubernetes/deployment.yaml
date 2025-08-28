@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: cobol-app-deployment
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: cobol-app
@@ -12,8 +12,30 @@ spec:
       labels:
         app: cobol-app
     spec:
+      securityContext:
+        fsGroup: 1000
+      
+      initContainers:
+      - name: populate-volume
+        image: tstrunacr.azurecr.io/cobol-app:v4
+        command: ['sh', '-c', 'cp -r /app/. /workspace/']
+        volumeMounts:
+        - name: cobol-data
+          mountPath: /workspace
+      
       containers:
       - name: cobol-app-container
-        image: tstrunacr.azurecr.io/cobol-app:v1
+        image: tstrunacr.azurecr.io/cobol-app:v4
         ports:
         - containerPort: 8000
+        env:
+        - name: "COBOL_ARGS"
+          value: "--apply-interest"
+        volumeMounts:
+        - name: cobol-data
+          mountPath: /workspace
+      
+      volumes:
+      - name: cobol-data
+        persistentVolumeClaim:
+          claimName: cobol-data-pvc

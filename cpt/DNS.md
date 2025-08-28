@@ -20,8 +20,4 @@
 
 ![DNS_ym.png](/cpt/DNS_conf/DNS_ym.png)
 
-#### Too buggy and breaks simulation (like random ICMP traffics idk), so listing every domain in each DNS more stable
-
-![DNS_ym.png](/cpt/DNS_conf/DNS_ym.png)
-
 

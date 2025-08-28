@@ -1,6 +1,8 @@
 # Overview
 This is a project build using x86 Assembly for its backend. The project has features such as getting, uploading, editing, and deleting PNG images within a directory in the server. This project parses the HTTP Request from devices and serve static files or do API services if detected. This service utilizes the C Binary for parsing the HTTP request more efficiently.
 
+### Deployment (if it works 😭): https://sasm.ddns.net/
+
 ## Run the server locally
 
 Build the server: 

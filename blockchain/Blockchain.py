@@ -19,8 +19,8 @@ class Blockchain:
             previous_hash="0",
             data=[],
             merkle_root="",
-            # timestamp="0000-00-00T00:00:00",
-            timestamp=None,
+            timestamp="0000-00-00T00:00:00",
+            # timestamp=None,
             nonce=0
         )
         # Manually set the known hash for consistency

@@ -105,7 +105,7 @@ section .data
         crlf_len           equ $ - crlf
 
 section .bss
-        request_buffer: resb 8192
+        request_buffer: resb 104,857,600
         req_buff_len equ $ - request_buffer
         socket_fd: resq 1
         client_fd: resq 1

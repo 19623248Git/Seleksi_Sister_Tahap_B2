@@ -32,6 +32,7 @@ Router(config-ext-nacl)#permit tcp any 192.168.4.0 0.0.0.255 eq 443
 Router(config-ext-nacl)#permit udp any 192.168.4.0 0.0.0.255 eq 53
 Router(config-ext-nacl)#permit udp any 192.168.4.0 0.0.0.255 eq 67
 Router(config-ext-nacl)#permit udp any 192.168.4.0 0.0.0.255 eq 68
+Router(config-ext-nacl)#permit udp any eq domain 192.168.4.0 0.0.0.255
 Router(config-ext-nacl)#exit
 Router(config)#ip access-list extended ent_out
 Router(config-ext-nacl)#permit ospf any any
@@ -79,6 +80,7 @@ Router(config-ext-nacl)# permit tcp any 192.168.8.0 0.0.0.255 eq 443
 Router(config-ext-nacl)# permit udp any 192.168.8.0 0.0.0.255 eq 53
 Router(config-ext-nacl)# permit udp any 192.168.8.0 0.0.0.255 eq 67
 Router(config-ext-nacl)# permit udp any 192.168.8.0 0.0.0.255 eq 68
+Router(config-ext-nacl)# permit udp any eq domain 192.168.8.0 0.0.0.255
 Router(config-ext-nacl)#ip access-list extended ent_out
 Router(config-ext-nacl)# permit ospf any any
 Router(config-ext-nacl)# permit udp host 192.168.8.4 any eq 67
@@ -124,6 +126,7 @@ Router(config-ext-nacl)# permit tcp any 192.168.12.0 0.0.0.255 eq 443
 Router(config-ext-nacl)# permit udp any 192.168.12.0 0.0.0.255 eq 53
 Router(config-ext-nacl)# permit udp any 192.168.12.0 0.0.0.255 eq 67
 Router(config-ext-nacl)# permit udp any 192.168.12.0 0.0.0.255 eq 68
+Router(config-ext-nacl)# permit udp any eq domain 192.168.12.0 0.0.0.255
 Router(config-ext-nacl)#ip access-list extended ent_out
 Router(config-ext-nacl)# permit ospf any any
 Router(config-ext-nacl)# permit udp host 192.168.12.4 any eq 67
@@ -169,6 +172,7 @@ Router(config-ext-nacl)# permit tcp any 192.168.16.0 0.0.0.255 eq 443
 Router(config-ext-nacl)# permit udp any 192.168.16.0 0.0.0.255 eq 53
 Router(config-ext-nacl)# permit udp any 192.168.16.0 0.0.0.255 eq 67
 Router(config-ext-nacl)# permit udp any 192.168.16.0 0.0.0.255 eq 68
+Router(config-ext-nacl)#permit udp any eq domain 192.168.16.0 0.0.0.255
 Router(config-ext-nacl)#ip access-list extended ent_out
 Router(config-ext-nacl)# permit ospf any any
 Router(config-ext-nacl)# permit udp host 192.168.16.4 any eq 67

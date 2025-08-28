@@ -1,6 +1,6 @@
 # Test the blockchain locally (localhost)
 
-- Run Bootstrap Node:
+- Run Bootstrap Node **(THIS MUST RUN FIRST)**:
 ```
 python3 Node.py -p 8000
 ```

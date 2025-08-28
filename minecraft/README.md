@@ -89,7 +89,7 @@ The simple minecraft computer comprises of an ALU, a 16 register memory system, 
 - The CPU is just the memory register's two outputs directly connected to the ALU, whereas the ALU's output is connected back to the memory register to be written at the user input register.
 - The CPU is also able to display the value currently in the user input register, and can be seen on both sides.
 
-### Video Demonstration Link
+### <a href="https://drive.google.com/file/d/1ysxqSKE5BOhYg51czskaxIIcLVNWnbs7/view?usp=sharing">Video Demonstration Link</a>
 
 
 

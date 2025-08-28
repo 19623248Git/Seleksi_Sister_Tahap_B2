@@ -1,2 +1,9 @@
 **/bin/**
 **/tmp/**
+**/client_asm/**
+**/cobol_app/**
+**/asm_app/**
+**/dev/**
+**main/**
+**/__pycache__/**
+**/venv/**
